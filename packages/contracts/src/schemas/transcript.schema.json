@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/transcript.schema.json",
+  "title": "Transcript",
+  "description": "Immutable ASR output for one source plus manual corrections; raw text is preserved beside corrected text (PRD 9.1, F02).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assetId",
+    "sourceHash",
+    "backend",
+    "model",
+    "version",
+    "configHash",
+    "language",
+    "words",
+    "sentences",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "assetId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "sourceHash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "backend": {
+      "enum": [
+        "faster_whisper",
+        "whisper",
+        "whisperx",
+        "whisper_cpp",
+        "manual"
+      ]
+    },
+    "model": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "configHash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+    },
+    "words": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/word"
+      },
+      "maxItems": 100000
+    },
+    "sentences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sentence"
+      },
+      "maxItems": 20000
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "createdAt",
+        "glossaryHash",
+        "vad",
+        "alignment"
+      ],
+      "properties": {
+        "createdAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "glossaryHash": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vad": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/version"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alignment": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/version"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "word": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text",
+        "correctedText",
+        "sourceStartUs",
+        "sourceEndUs",
+        "score",
+        "alignment",
+        "speaker"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "correctedText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "score": {
+          "description": "Raw engine-specific score; not a calibrated probability",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alignment": {
+          "enum": [
+            "aligned",
+            "estimated",
+            "failed"
+          ]
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "startWordId",
+        "endWordId",
+        "rawText",
+        "correctedText"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "startWordId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "endWordId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "rawText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "correctedText": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0",
+  "id": "job_01",
+  "projectId": "p1",
+  "stage": "Export",
+  "profile": "draft",
+  "state": "failed",
+  "progress": 0.4,
+  "baseRevision": 7,
+  "idempotencyKey": "key_00000001",
+  "attempts": 1,
+  "createdAt": "2026-10-05T12:00:00Z",
+  "updatedAt": "2026-10-05T12:00:00Z",
+  "error": {
+    "code": "codec_missing",
+    "message": "H.264 encoder not available",
+    "remedy": "Install an FFmpeg build with libx264 or choose another preset"
+  },
+  "artifacts": [
+    {
+      "kind": "draft",
+      "ref": "renders/draft.mp4",
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

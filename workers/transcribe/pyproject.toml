@@ -1,0 +1,12 @@
+[project]
+name = "takeoff-transcribe"
+version = "0.1.0"
+description = "Takeoff transcription worker: VAD, ASR and word timing with faster-whisper, offline by default"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "faster-whisper>=1.1,<2",
+    "numpy>=1.26",
+]
+
+[tool.uv]
+package = false

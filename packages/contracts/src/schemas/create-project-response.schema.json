@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/create-project-response.schema.json",
+  "title": "CreateProjectResponse",
+  "description": "POST /v1/projects response.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "revision"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "revision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    }
+  }
+}

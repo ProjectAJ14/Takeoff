@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "1.0",
+  "id": "qa_01",
+  "planHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "artifactHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "createdAt": "2026-10-05T12:00:00Z",
+  "issues": [
+    {
+      "id": "i1",
+      "severity": "warning",
+      "check": "caption_bounds",
+      "objectRef": "caption_02",
+      "frame": null,
+      "span": {
+        "startFrame": 40,
+        "endFrame": 90
+      },
+      "evidence": "Glyph box exceeds safe area by 12 px",
+      "suggestedPatch": {
+        "schemaVersion": "1.0",
+        "baseRevision": 7,
+        "ops": [
+          {
+            "op": "set_caption",
+            "captionId": "caption_02",
+            "positionPolicy": "safe_top"
+          },
+          {
+            "op": "run_shell",
+            "command": "ls"
+          }
+        ]
+      }
+    },
+    {
+      "id": "i2",
+      "severity": "critical",
+      "check": "decode",
+      "objectRef": null,
+      "frame": 12,
+      "span": null,
+      "evidence": "Decoder error at frame 12"
+    }
+  ],
+  "checks": [
+    {
+      "name": "decode",
+      "status": "failed",
+      "detail": null
+    },
+    {
+      "name": "loudness",
+      "status": "skipped",
+      "detail": "No audio stream"
+    },
+    {
+      "name": "face_crop",
+      "status": "not_run",
+      "detail": null
+    }
+  ]
+}

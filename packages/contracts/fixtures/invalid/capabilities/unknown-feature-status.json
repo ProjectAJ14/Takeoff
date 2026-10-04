@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0",
+  "appVersion": "0.1.0",
+  "networkPolicy": "local_only",
+  "models": [
+    {
+      "id": "small_en",
+      "kind": "asr",
+      "backend": "faster_whisper",
+      "installed": true,
+      "device": "cpu"
+    }
+  ],
+  "devices": [
+    {
+      "id": "cpu",
+      "kind": "cpu",
+      "name": "Apple M3"
+    }
+  ],
+  "codecs": {
+    "decode": [
+      "h264",
+      "hevc",
+      "aac"
+    ],
+    "encode": [
+      "h264",
+      "aac"
+    ]
+  },
+  "providers": [],
+  "features": [
+    {
+      "id": "F01",
+      "status": "beta",
+      "reason": null
+    },
+    {
+      "id": "F16",
+      "status": "unavailable",
+      "reason": "P1 feature, not shipped"
+    }
+  ]
+}

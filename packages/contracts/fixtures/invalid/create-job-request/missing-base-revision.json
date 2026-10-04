@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "1.0",
+  "stage": "Render preview",
+  "profile": "draft",
+  "idempotencyKey": "0b8f8a0e-1c2d"
+}

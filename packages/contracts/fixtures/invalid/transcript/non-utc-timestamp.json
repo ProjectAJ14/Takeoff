@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "1.0",
+  "assetId": "take_a",
+  "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "backend": "faster_whisper",
+  "model": "small.en",
+  "version": "1.1.0",
+  "configHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "language": "en",
+  "words": [
+    {
+      "id": "w01",
+      "text": "Flutter",
+      "correctedText": null,
+      "sourceStartUs": 1000000,
+      "sourceEndUs": 1400000,
+      "score": -0.21,
+      "alignment": "aligned",
+      "speaker": null
+    },
+    {
+      "id": "w02",
+      "text": "sends",
+      "correctedText": null,
+      "sourceStartUs": 1400000,
+      "sourceEndUs": 1700000,
+      "score": null,
+      "alignment": "estimated",
+      "speaker": "S1"
+    },
+    {
+      "id": "w03",
+      "text": "Deo",
+      "correctedText": "Dio",
+      "sourceStartUs": 1700000,
+      "sourceEndUs": 2000000,
+      "score": 0.4,
+      "alignment": "failed",
+      "speaker": null
+    }
+  ],
+  "sentences": [
+    {
+      "id": "s01",
+      "startWordId": "w01",
+      "endWordId": "w03",
+      "rawText": "Flutter sends Deo",
+      "correctedText": "Flutter sends Dio"
+    }
+  ],
+  "provenance": {
+    "createdAt": "2026-10-05 12:00",
+    "glossaryHash": null,
+    "vad": "silero_v5",
+    "alignment": null
+  }
+}

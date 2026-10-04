@@ -1,0 +1,544 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/patch.schema.json",
+  "title": "PlanPatch",
+  "description": "Allowlisted, typed plan operations applied against baseRevision (409 on stale revision). No free-form code or filter strings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "baseRevision",
+    "ops"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "baseRevision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/op"
+      }
+    }
+  },
+  "$defs": {
+    "op": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "op"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/restore_span"
+        },
+        {
+          "$ref": "#/$defs/remove_span"
+        },
+        {
+          "$ref": "#/$defs/replace_take"
+        },
+        {
+          "$ref": "#/$defs/set_caption"
+        },
+        {
+          "$ref": "#/$defs/set_crop"
+        },
+        {
+          "$ref": "#/$defs/replace_asset"
+        },
+        {
+          "$ref": "#/$defs/set_gain"
+        },
+        {
+          "$ref": "#/$defs/lock_object"
+        },
+        {
+          "$ref": "#/$defs/unlock_object"
+        },
+        {
+          "$ref": "#/$defs/set_setting"
+        },
+        {
+          "$ref": "#/$defs/reorder_segment"
+        },
+        {
+          "$ref": "#/$defs/split_segment"
+        },
+        {
+          "$ref": "#/$defs/trim_segment"
+        },
+        {
+          "$ref": "#/$defs/remove_visual"
+        },
+        {
+          "$ref": "#/$defs/set_hook"
+        }
+      ]
+    },
+    "restore_span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "assetId",
+        "sourceStartUs",
+        "sourceEndUs"
+      ],
+      "properties": {
+        "op": {
+          "const": "restore_span"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        }
+      }
+    },
+    "remove_span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "assetId",
+        "sourceStartUs",
+        "sourceEndUs",
+        "reason"
+      ],
+      "properties": {
+        "op": {
+          "const": "remove_span"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "reason": {
+          "$ref": "common.schema.json#/$defs/message"
+        }
+      }
+    },
+    "replace_take": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "segmentId",
+        "assetId",
+        "sourceStartUs",
+        "sourceEndUs",
+        "wordIds"
+      ],
+      "properties": {
+        "op": {
+          "const": "replace_take"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "wordIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        }
+      }
+    },
+    "set_caption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "captionId"
+      ],
+      "properties": {
+        "op": {
+          "const": "set_caption"
+        },
+        "captionId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "text": {
+          "$ref": "common.schema.json#/$defs/shortText"
+        },
+        "wordIds": {
+          "$ref": "edit-plan.schema.json#/$defs/caption/properties/wordIds"
+        },
+        "emphasisWordIds": {
+          "$ref": "edit-plan.schema.json#/$defs/caption/properties/emphasisWordIds"
+        },
+        "template": {
+          "$ref": "edit-plan.schema.json#/$defs/captionTemplate"
+        },
+        "positionPolicy": {
+          "$ref": "edit-plan.schema.json#/$defs/captionPosition"
+        }
+      },
+      "minProperties": 3
+    },
+    "set_crop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "segmentId",
+        "rect"
+      ],
+      "properties": {
+        "op": {
+          "const": "set_crop"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "rect": {
+          "$ref": "edit-plan.schema.json#/$defs/cropRect"
+        }
+      }
+    },
+    "replace_asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "targetId",
+        "assetId"
+      ],
+      "properties": {
+        "op": {
+          "const": "replace_asset"
+        },
+        "targetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "set_gain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "targetId",
+        "gainDb"
+      ],
+      "properties": {
+        "op": {
+          "const": "set_gain"
+        },
+        "targetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "gainDb": {
+          "$ref": "common.schema.json#/$defs/gainDb"
+        }
+      }
+    },
+    "lock_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "objectId"
+      ],
+      "properties": {
+        "op": {
+          "const": "lock_object"
+        },
+        "objectId": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "unlock_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "objectId"
+      ],
+      "properties": {
+        "op": {
+          "const": "unlock_object"
+        },
+        "objectId": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "set_setting": {
+      "type": "object",
+      "required": [
+        "op",
+        "key"
+      ],
+      "properties": {
+        "op": {
+          "const": "set_setting"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "key",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "const": "set_setting"
+            },
+            "key": {
+              "enum": [
+                "badTakes",
+                "fillers",
+                "silence",
+                "captions",
+                "userBroll",
+                "aiBroll",
+                "zoom",
+                "music",
+                "sfx",
+                "studioVoice",
+                "autoColor",
+                "textHook",
+                "motionGraphics"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "key",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "const": "set_setting"
+            },
+            "key": {
+              "enum": [
+                "networkPolicy"
+              ]
+            },
+            "value": {
+              "$ref": "common.schema.json#/$defs/networkPolicy"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "key",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "const": "set_setting"
+            },
+            "key": {
+              "enum": [
+                "fillerStrength"
+              ]
+            },
+            "value": {
+              "$ref": "edit-plan.schema.json#/$defs/fillerStrength"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "key",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "const": "set_setting"
+            },
+            "key": {
+              "enum": [
+                "targetSeconds"
+              ]
+            },
+            "value": {
+              "$ref": "edit-plan.schema.json#/$defs/targetSeconds"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "key",
+            "value"
+          ],
+          "properties": {
+            "op": {
+              "const": "set_setting"
+            },
+            "key": {
+              "enum": [
+                "hook"
+              ]
+            },
+            "value": {
+              "$ref": "edit-plan.schema.json#/$defs/hookSetting"
+            }
+          }
+        }
+      ]
+    },
+    "reorder_segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "segmentId",
+        "toIndex"
+      ],
+      "properties": {
+        "op": {
+          "const": "reorder_segment"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "toIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1999
+        }
+      }
+    },
+    "split_segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "segmentId",
+        "atSourceUs",
+        "newSegmentId"
+      ],
+      "properties": {
+        "op": {
+          "const": "split_segment"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "atSourceUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "newSegmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "trim_segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "segmentId",
+        "sourceStartUs",
+        "sourceEndUs"
+      ],
+      "properties": {
+        "op": {
+          "const": "trim_segment"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        }
+      }
+    },
+    "remove_visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "visualId"
+      ],
+      "properties": {
+        "op": {
+          "const": "remove_visual"
+        },
+        "visualId": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "set_hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "text",
+        "evidenceIds"
+      ],
+      "properties": {
+        "op": {
+          "const": "set_hook"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "$ref": "edit-plan.schema.json#/$defs/hookText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidenceIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        }
+      }
+    }
+  }
+}

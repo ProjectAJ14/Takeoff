@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "baseRevision": 7,
+  "ops": [
+    {
+      "op": "split_segment",
+      "segmentId": "s",
+      "atSourceUs": -5,
+      "newSegmentId": "s2"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "1.0",
+  "projectId": "p1",
+  "revision": 7,
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": {
+      "num": 30,
+      "den": 1
+    },
+    "audioSampleRate": 48000,
+    "colorSpace": "bt709",
+    "targetFrames": 90,
+    "lengthPolicy": "hard_max"
+  },
+  "settings": {
+    "badTakes": true,
+    "fillers": true,
+    "silence": true,
+    "captions": true,
+    "userBroll": false,
+    "aiBroll": false,
+    "zoom": true,
+    "music": true,
+    "sfx": false,
+    "studioVoice": true,
+    "autoColor": false,
+    "textHook": false,
+    "motionGraphics": true,
+    "networkPolicy": "local_only"
+  },
+  "words": [
+    {
+      "id": "w01",
+      "assetId": "take_a",
+      "text": "Flutter",
+      "sourceStartUs": 1000000,
+      "sourceEndUs": 1400000,
+      "alignment": "aligned"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "cand_01",
+      "kind": "filler",
+      "assetId": "take_a",
+      "sourceStartUs": 900000,
+      "sourceEndUs": 1000000,
+      "wordIds": [
+        "w00"
+      ],
+      "evidence": "'um' with VAD energy dip",
+      "confidenceTier": "high"
+    }
+  ],
+  "brand": {
+    "name": "Developer",
+    "hookTone": "direct",
+    "motionIntensity": "restrained",
+    "glossary": [
+      "Dio"
+    ],
+    "prohibitedClaims": []
+  },
+  "mediaPath": "/Users/me/take.mov"
+}

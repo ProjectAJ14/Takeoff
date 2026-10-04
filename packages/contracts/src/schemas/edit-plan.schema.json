@@ -1,0 +1,1176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/edit-plan.schema.json",
+  "title": "EditPlan",
+  "description": "Semantic edit plan (PRD 9.3). Source anchors only; the compiler owns output time.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "revision",
+    "output",
+    "settings",
+    "assets",
+    "transcriptRef",
+    "brandProfileRef",
+    "styleProfileRef",
+    "decisions",
+    "segments",
+    "captions",
+    "visuals",
+    "transforms",
+    "audio",
+    "reviewMarkers",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "revision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "output": {
+      "$ref": "#/$defs/output"
+    },
+    "settings": {
+      "$ref": "#/$defs/settings"
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/assetRef"
+      }
+    },
+    "transcriptRef": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/relPath"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "brandProfileRef": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/relPath"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "styleProfileRef": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/relPath"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "decisions": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "segments": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "captions": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "$ref": "#/$defs/caption"
+      }
+    },
+    "visuals": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/visual"
+      }
+    },
+    "transforms": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/transform"
+      }
+    },
+    "audio": {
+      "$ref": "#/$defs/audio"
+    },
+    "reviewMarkers": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/$defs/reviewMarker"
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height",
+        "fps",
+        "audioSampleRate",
+        "colorSpace",
+        "targetFrames",
+        "lengthPolicy"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 7680
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 7680
+        },
+        "fps": {
+          "$ref": "common.schema.json#/$defs/rational"
+        },
+        "audioSampleRate": {
+          "const": 48000
+        },
+        "colorSpace": {
+          "enum": [
+            "bt709"
+          ]
+        },
+        "targetFrames": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lengthPolicy": {
+          "enum": [
+            "hard_max",
+            "soft_target",
+            "none"
+          ]
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "badTakes",
+        "fillers",
+        "silence",
+        "captions",
+        "userBroll",
+        "aiBroll",
+        "zoom",
+        "music",
+        "sfx",
+        "studioVoice",
+        "autoColor",
+        "textHook",
+        "motionGraphics",
+        "networkPolicy"
+      ],
+      "properties": {
+        "badTakes": {
+          "type": "boolean"
+        },
+        "fillers": {
+          "type": "boolean"
+        },
+        "silence": {
+          "type": "boolean"
+        },
+        "captions": {
+          "type": "boolean"
+        },
+        "userBroll": {
+          "type": "boolean"
+        },
+        "aiBroll": {
+          "type": "boolean"
+        },
+        "zoom": {
+          "type": "boolean"
+        },
+        "music": {
+          "type": "boolean"
+        },
+        "sfx": {
+          "type": "boolean"
+        },
+        "studioVoice": {
+          "type": "boolean"
+        },
+        "autoColor": {
+          "type": "boolean"
+        },
+        "textHook": {
+          "type": "boolean"
+        },
+        "motionGraphics": {
+          "type": "boolean"
+        },
+        "networkPolicy": {
+          "$ref": "common.schema.json#/$defs/networkPolicy"
+        },
+        "fillerStrength": {
+          "$ref": "#/$defs/fillerStrength"
+        },
+        "targetSeconds": {
+          "$ref": "#/$defs/targetSeconds"
+        },
+        "hook": {
+          "$ref": "#/$defs/hookSetting"
+        }
+      }
+    },
+    "fillerStrength": {
+      "enum": [
+        "conservative",
+        "normal",
+        "aggressive"
+      ]
+    },
+    "targetSeconds": {
+      "description": "null means automatic length",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hookSetting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "autoSelect",
+        "text"
+      ],
+      "properties": {
+        "autoSelect": {
+          "type": "boolean"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hookText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "hookText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "assetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "manifestRef"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "$ref": "common.schema.json#/$defs/assetKind"
+        },
+        "manifestRef": {
+          "$ref": "common.schema.json#/$defs/relPath"
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "assetId",
+        "action",
+        "sourceStartUs",
+        "sourceEndUs",
+        "reason",
+        "evidenceIds",
+        "confidenceTier"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "action": {
+          "enum": [
+            "remove",
+            "keep",
+            "review"
+          ]
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "wordIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        },
+        "reason": {
+          "$ref": "common.schema.json#/$defs/message"
+        },
+        "evidenceIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        },
+        "confidenceTier": {
+          "$ref": "common.schema.json#/$defs/confidenceTier"
+        },
+        "detector": {
+          "$ref": "common.schema.json#/$defs/version"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "assetId",
+        "sourceStartUs",
+        "sourceEndUs",
+        "wordIds",
+        "speed",
+        "cropPolicy",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "wordIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        },
+        "speed": {
+          "$ref": "common.schema.json#/$defs/rational"
+        },
+        "cropPolicy": {
+          "$ref": "#/$defs/cropPolicy"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cropPolicy": {
+      "enum": [
+        "face_safe_vertical",
+        "center",
+        "manual"
+      ]
+    },
+    "captionTemplate": {
+      "enum": [
+        "restrained",
+        "energetic",
+        "static"
+      ]
+    },
+    "captionPosition": {
+      "enum": [
+        "safe_face_aware",
+        "safe_bottom",
+        "safe_top"
+      ]
+    },
+    "caption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "segmentId",
+        "wordIds",
+        "text",
+        "template",
+        "emphasisWordIds",
+        "positionPolicy",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "wordIds": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "text": {
+          "$ref": "common.schema.json#/$defs/shortText"
+        },
+        "template": {
+          "$ref": "#/$defs/captionTemplate"
+        },
+        "emphasisWordIds": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "positionPolicy": {
+          "$ref": "#/$defs/captionPosition"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "anchor": {
+      "description": "Semantic anchor on a source word; offsetFrames is a signed delta in output frames",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wordId",
+        "edge",
+        "offsetFrames"
+      ],
+      "properties": {
+        "wordId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "edge": {
+          "enum": [
+            "start",
+            "end"
+          ]
+        },
+        "offsetFrames": {
+          "type": "integer",
+          "minimum": -900,
+          "maximum": 900
+        }
+      }
+    },
+    "durationFrames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 108000
+    },
+    "visualFallback": {
+      "enum": [
+        "omit",
+        "presenter_only",
+        "static_card"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "visual": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/motionTemplateVisual"
+        },
+        {
+          "$ref": "#/$defs/brollVisual"
+        },
+        {
+          "$ref": "#/$defs/hookTextVisual"
+        }
+      ]
+    },
+    "motionTemplateVisual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "segmentId",
+        "anchor",
+        "durationFrames",
+        "template",
+        "params",
+        "evidenceIds",
+        "fallback",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "motion_template"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "durationFrames": {
+          "$ref": "#/$defs/durationFrames"
+        },
+        "template": {
+          "enum": [
+            "kinetic_text_v1",
+            "request_flow_v1",
+            "comparison_list_v1"
+          ]
+        },
+        "params": {
+          "type": "object"
+        },
+        "evidenceIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        },
+        "fallback": {
+          "$ref": "#/$defs/visualFallback"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "template": {
+                "const": "kinetic_text_v1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/kineticTextParams"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "template": {
+                "const": "request_flow_v1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/requestFlowParams"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "template": {
+                "const": "comparison_list_v1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/comparisonListParams"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "kineticTextParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lines"
+      ],
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/label"
+          },
+          "minItems": 1,
+          "maxItems": 4
+        }
+      }
+    },
+    "requestFlowParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "containerLabel",
+        "internalNode",
+        "externalNode",
+        "edgeLabel"
+      ],
+      "properties": {
+        "containerLabel": {
+          "$ref": "#/$defs/label"
+        },
+        "internalNode": {
+          "$ref": "#/$defs/label"
+        },
+        "externalNode": {
+          "$ref": "#/$defs/label"
+        },
+        "edgeLabel": {
+          "$ref": "#/$defs/label"
+        }
+      }
+    },
+    "comparisonListParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "items"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/label"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/label"
+          },
+          "minItems": 2,
+          "maxItems": 6
+        }
+      }
+    },
+    "brollVisual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "segmentId",
+        "anchor",
+        "durationFrames",
+        "assetId",
+        "sourceStartUs",
+        "sourceEndUs",
+        "layout",
+        "evidenceIds",
+        "fallback",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "broll"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "durationFrames": {
+          "$ref": "#/$defs/durationFrames"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "sourceStartUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "sourceEndUs": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "layout": {
+          "enum": [
+            "full",
+            "inset",
+            "split"
+          ]
+        },
+        "evidenceIds": {
+          "$ref": "common.schema.json#/$defs/idList"
+        },
+        "fallback": {
+          "$ref": "#/$defs/visualFallback"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "hookTextVisual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "segmentId",
+        "anchor",
+        "durationFrames",
+        "text",
+        "evidenceIds",
+        "fallback",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "hook_text"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "durationFrames": {
+          "$ref": "#/$defs/durationFrames"
+        },
+        "text": {
+          "$ref": "#/$defs/hookText"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "fallback": {
+          "$ref": "#/$defs/visualFallback"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cropRect": {
+      "description": "Normalised source-frame rectangle, fractions of width/height",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "punchScale": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1.25
+    },
+    "transform": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/punchTransform"
+        },
+        {
+          "$ref": "#/$defs/cropTransform"
+        }
+      ]
+    },
+    "punchTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "segmentId",
+        "anchor",
+        "kind",
+        "scale",
+        "centerPolicy",
+        "transitionFrames",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "kind": {
+          "const": "punch"
+        },
+        "scale": {
+          "$ref": "#/$defs/punchScale"
+        },
+        "centerPolicy": {
+          "enum": [
+            "tracked_face",
+            "center"
+          ]
+        },
+        "transitionFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "durationFrames": {
+          "$ref": "#/$defs/durationFrames"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cropTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "segmentId",
+        "kind",
+        "rect",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "segmentId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "crop"
+        },
+        "rect": {
+          "$ref": "#/$defs/cropRect"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dialogue",
+        "music",
+        "sfx",
+        "mixTarget"
+      ],
+      "properties": {
+        "dialogue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profile",
+            "seamFadeMs"
+          ],
+          "properties": {
+            "profile": {
+              "enum": [
+                "studio_conservative",
+                "studio_strong",
+                "bypass"
+              ]
+            },
+            "seamFadeMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "music": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/music"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sfx": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/sfx"
+          }
+        },
+        "mixTarget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "integratedLufs",
+            "truePeakDbtp"
+          ],
+          "properties": {
+            "integratedLufs": {
+              "type": "number",
+              "minimum": -40,
+              "maximum": -5
+            },
+            "truePeakDbtp": {
+              "type": "number",
+              "minimum": -12,
+              "maximum": 0
+            }
+          }
+        }
+      }
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assetId",
+        "startFrame",
+        "durationFrames",
+        "gainDb",
+        "duckUnderDialogue",
+        "fadeInFrames",
+        "fadeOutFrames"
+      ],
+      "properties": {
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "startFrame": {
+          "$ref": "common.schema.json#/$defs/frame"
+        },
+        "durationFrames": {
+          "$ref": "#/$defs/durationFrames"
+        },
+        "gainDb": {
+          "$ref": "common.schema.json#/$defs/gainDb"
+        },
+        "duckUnderDialogue": {
+          "type": "boolean"
+        },
+        "fadeInFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "fadeOutFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sfx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "assetId",
+        "anchor",
+        "category",
+        "gainDb",
+        "locked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "assetId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "category": {
+          "$ref": "#/$defs/sfxCategory"
+        },
+        "gainDb": {
+          "$ref": "common.schema.json#/$defs/gainDb"
+        },
+        "visualId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sfxCategory": {
+      "enum": [
+        "ui_click",
+        "hit",
+        "whoosh"
+      ]
+    },
+    "reviewMarker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "severity",
+        "message",
+        "refs"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "uncertain_retake",
+            "meaning_risk",
+            "alignment_uncertain",
+            "duration_conflict",
+            "low_confidence_crop",
+            "visual_unavailable",
+            "orphaned_anchor",
+            "unsupported_claim"
+          ]
+        },
+        "severity": {
+          "$ref": "common.schema.json#/$defs/severity"
+        },
+        "message": {
+          "$ref": "common.schema.json#/$defs/message"
+        },
+        "refs": {
+          "$ref": "common.schema.json#/$defs/idList"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "director",
+        "seed",
+        "promptVersion"
+      ],
+      "properties": {
+        "director": {
+          "$ref": "common.schema.json#/$defs/version"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "promptVersion": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/version"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0",
+  "baseRevision": 7,
+  "ops": [
+    {
+      "op": "set_setting",
+      "key": "fillers",
+      "value": "no"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0",
+  "id": "take_a",
+  "kind": "document",
+  "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "relativePath": "media/take_a.mov",
+  "probe": {
+    "durationUs": 12000000,
+    "video": {
+      "width": 1920,
+      "height": 1080,
+      "rotation": 90,
+      "fpsNum": 30000,
+      "fpsDen": 1001,
+      "vfr": true,
+      "codec": "hevc",
+      "colorTransfer": "bt709",
+      "colorPrimaries": "bt709",
+      "pixFmt": "yuv420p"
+    },
+    "audio": {
+      "sampleRate": 48000,
+      "channels": 2,
+      "codec": "aac"
+    }
+  },
+  "derived": {
+    "proxy": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "analysisWav": null
+  },
+  "rights": {
+    "origin": "user",
+    "license": null,
+    "attribution": null,
+    "sourceUrl": null
+  },
+  "provenance": {
+    "importedAt": "2026-10-05T12:00:00Z",
+    "importer": "media_v1"
+  },
+  "permissionScope": "local_only"
+}

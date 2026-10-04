@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/export-manifest.schema.json",
+  "title": "ExportManifest",
+  "description": "Validated export outputs for one revision snapshot (PRD 5.5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectId",
+    "revision",
+    "planHash",
+    "createdAt",
+    "preset",
+    "durationFrames",
+    "outputs",
+    "checks",
+    "unresolvedWarnings"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "revision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "planHash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "createdAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "preset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "width",
+        "height",
+        "fps",
+        "container",
+        "videoCodec",
+        "audioCodec",
+        "colorSpace",
+        "burnCaptions"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 7680
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 7680
+        },
+        "fps": {
+          "$ref": "common.schema.json#/$defs/rational"
+        },
+        "container": {
+          "enum": [
+            "mp4"
+          ]
+        },
+        "videoCodec": {
+          "enum": [
+            "h264"
+          ]
+        },
+        "audioCodec": {
+          "enum": [
+            "aac"
+          ]
+        },
+        "colorSpace": {
+          "enum": [
+            "bt709"
+          ]
+        },
+        "burnCaptions": {
+          "type": "boolean"
+        }
+      }
+    },
+    "durationFrames": {
+      "$ref": "common.schema.json#/$defs/count"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "relativePath",
+          "sha256",
+          "bytes"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "video",
+              "srt",
+              "vtt",
+              "caption_json",
+              "project_bundle",
+              "stem"
+            ]
+          },
+          "relativePath": {
+            "$ref": "common.schema.json#/$defs/relPath"
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "bytes": {
+            "$ref": "common.schema.json#/$defs/count"
+          }
+        }
+      },
+      "maxItems": 50,
+      "minItems": 1
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "common.schema.json#/$defs/code"
+          },
+          "status": {
+            "$ref": "common.schema.json#/$defs/checkStatus"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/message"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "maxItems": 100
+    },
+    "unresolvedWarnings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/warning"
+      },
+      "maxItems": 1000
+    }
+  }
+}

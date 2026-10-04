@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/capabilities.schema.json",
+  "title": "Capabilities",
+  "description": "GET /v1/capabilities: installed models, devices, codecs, provider policies and feature availability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "appVersion",
+    "networkPolicy",
+    "models",
+    "devices",
+    "codecs",
+    "providers",
+    "features"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "appVersion": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "networkPolicy": {
+      "$ref": "common.schema.json#/$defs/networkPolicy"
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "backend",
+          "installed",
+          "device"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "asr",
+              "vad",
+              "alignment",
+              "director"
+            ]
+          },
+          "backend": {
+            "$ref": "common.schema.json#/$defs/version"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "maxItems": 100
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "cpu",
+              "cuda",
+              "metal"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "maxItems": 20
+    },
+    "codecs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decode",
+        "encode"
+      ],
+      "properties": {
+        "decode": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "maxItems": 200
+        },
+        "encode": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "maxItems": 200
+        }
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "enabled",
+          "dataTypes"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "dataTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/providerDataType"
+            },
+            "maxItems": 8,
+            "uniqueItems": true
+          }
+        }
+      },
+      "maxItems": 50
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/featureId"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "experimental",
+              "unavailable"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/message"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "maxItems": 17
+    }
+  }
+}

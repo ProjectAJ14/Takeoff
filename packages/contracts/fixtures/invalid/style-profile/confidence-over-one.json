@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0",
+  "id": "ref_style",
+  "version": 1,
+  "pace": {
+    "wordsPerMinuteMin": 150,
+    "wordsPerMinuteMax": 190
+  },
+  "shotDurationUs": {
+    "p25": 800000,
+    "p50": 1500000,
+    "p75": 2400000
+  },
+  "typography": {
+    "category": "sans",
+    "scale": "large"
+  },
+  "textDensity": "medium",
+  "palette": {
+    "relationship": "complementary",
+    "colors": [
+      "#101010",
+      "#F5F5F5"
+    ]
+  },
+  "framing": "tight",
+  "motion": {
+    "easing": "snappy",
+    "intensity": "energetic"
+  },
+  "transitionsPerMinute": 12,
+  "audio": {
+    "energy": "high",
+    "beatAligned": true
+  },
+  "confidence": 1.5,
+  "disabledTraits": [
+    "audio"
+  ],
+  "provenance": {
+    "sources": [
+      {
+        "kind": "local_media",
+        "ref": "refs/ref_01.mp4",
+        "analyzed": "Full 45 s clip, frames and audio envelope"
+      }
+    ],
+    "createdAt": "2026-10-05T12:00:00Z"
+  }
+}

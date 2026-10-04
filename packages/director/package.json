@@ -1,0 +1,15 @@
+{
+  "name": "@takeoff/director",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@takeoff/contracts": "0.0.0"
+  }
+}

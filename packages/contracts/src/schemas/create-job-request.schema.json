@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/create-job-request.schema.json",
+  "title": "CreateJobRequest",
+  "description": "POST /v1/projects/{id}/jobs body.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "stage",
+    "profile",
+    "baseRevision",
+    "idempotencyKey"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "stage": {
+      "$ref": "common.schema.json#/$defs/jobStage"
+    },
+    "profile": {
+      "enum": [
+        "draft",
+        "final"
+      ]
+    },
+    "baseRevision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "idempotencyKey": {
+      "$ref": "#/$defs/idempotencyKey"
+    }
+  },
+  "$defs": {
+    "idempotencyKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{8,128}$"
+    }
+  }
+}

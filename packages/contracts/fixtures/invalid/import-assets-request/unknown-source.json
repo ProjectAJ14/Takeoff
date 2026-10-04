@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "items": [
+    {
+      "source": "url",
+      "url": "https://example.com/a.mp4"
+    }
+  ]
+}

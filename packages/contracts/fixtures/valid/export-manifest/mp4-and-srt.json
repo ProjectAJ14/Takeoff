@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0",
+  "id": "exp_01",
+  "projectId": "p1",
+  "revision": 7,
+  "planHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "createdAt": "2026-10-05T12:00:00Z",
+  "preset": {
+    "id": "reels_1080",
+    "version": 1,
+    "width": 1080,
+    "height": 1920,
+    "fps": {
+      "num": 30,
+      "den": 1
+    },
+    "container": "mp4",
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "colorSpace": "bt709",
+    "burnCaptions": true
+  },
+  "durationFrames": 90,
+  "outputs": [
+    {
+      "kind": "video",
+      "relativePath": "exports/final.mp4",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bytes": 1000
+    },
+    {
+      "kind": "srt",
+      "relativePath": "exports/final.srt",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "bytes": 120
+    }
+  ],
+  "checks": [
+    {
+      "name": "decode",
+      "status": "passed",
+      "detail": null
+    }
+  ],
+  "unresolvedWarnings": [
+    {
+      "code": "uncertain_retake",
+      "message": "Unreviewed retake",
+      "refs": [
+        "decision_02"
+      ]
+    }
+  ]
+}

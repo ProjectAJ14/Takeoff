@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "name": "Flutter explainer",
+  "settings": {
+    "badTakes": true,
+    "fillers": true,
+    "silence": true,
+    "captions": true,
+    "userBroll": false,
+    "aiBroll": false,
+    "zoom": true,
+    "music": true,
+    "sfx": false,
+    "studioVoice": true,
+    "autoColor": false,
+    "textHook": false,
+    "motionGraphics": true,
+    "networkPolicy": "local_only"
+  }
+}
