@@ -1,0 +1,39 @@
+node_modules/
+dist/
+build/
+out/
+*.tsbuildinfo
+coverage/
+__pycache__/
+*.py[cod]
+.venv/
+
+# user projects, media and caches: never commit a user's recordings
+*.db
+*.db-wal
+*.db-shm
+*.takeoff/
+.cache/
+models/
+*.mp4
+*.mov
+*.m4a
+*.wav
+# ...except small synthetic fixtures with written redistribution rights
+!**/fixtures/**
+
+.DS_Store
+*.log
+.env
+.env.*
+
+# local Claude Code permissions, per-machine
+.claude/settings.local.json
+
+# editor config, per-machine
+.idea/
+.vscode/
+
+# playwright-mcp scratch output and local agent plans
+.playwright-mcp/
+.plan/
