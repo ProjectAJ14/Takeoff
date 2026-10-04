@@ -1,0 +1,30 @@
+name: Test
+
+# Every pull request, and every push to `main`. Package test jobs are added here
+# as each package lands (CLAUDE.md, "Repository map"); until then the docs-sync
+# guard is the only check.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # A PR that changes product code must also change docs/ and README.md.
+  # The script's header lists what counts as product code.
+  docs-sync:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: .github/scripts/check-docs-sync.sh "origin/${{ github.base_ref }}"

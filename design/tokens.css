@@ -1,0 +1,169 @@
+/* ============================================================
+   Takeoff design tokens — the app's chrome, not the user's video.
+
+   Inherited from the Eklavya design system: warm ink and paper
+   grounds, one verdigris accent, square hairline chrome, Archivo /
+   Inter / JetBrains Mono. Takeoff adds editor roles (stage, cut,
+   review) and drops Eklavya's terminal and arrow showpieces.
+
+   Two layers, and the order matters:
+
+   1. A SCALE — accent ramp, type, spacing, radii, motion. Fixed
+      values that mean the same thing on every ground.
+   2. GROUNDS — `ink` (default) and `paper`, each redefining the
+      same set of ROLE tokens. Components must only ever name a
+      role (--ink, --dim, --line, --spot). Naming a scale step or
+      a raw hex in a component is a bug: it pins that component to
+      one ground and the ground toggle stops working for it.
+
+   The ground is set as data-mode on <html> before this file loads.
+   Ink is the default and does not follow the OS: an editor's chrome
+   recedes so the footage reads.
+
+   No font @import. Takeoff is local-first (PRD §14): the app bundles
+   Archivo, Inter and JetBrains Mono (all SIL OFL) and makes no font
+   request. The stacks below fall back when a file is missing.
+
+   Rendered output never reads this file. Captions, hooks and motion
+   scenes take their look from the user's BrandProfile (PRD F17).
+   ============================================================ */
+
+:root {
+  /* ---------- ACCENT: verdigris ---------- */
+  --vd-50:  #E6F7F3;
+  --vd-100: #C4EDE4;
+  --vd-200: #9BE0D2;
+  --vd-300: #79D5C4; /* accent on ink   — 10.33:1 */
+  --vd-400: #3FB8A3;
+  --vd-500: #199688;
+  --vd-600: #0E6E66;
+  --vd-700: #0A5751; /* accent on paper — 7.20:1 on the ground, 5.10:1 on a tint */
+  --vd-800: #07403C;
+  --vd-900: #052E2B;
+
+  /* ---------- TYPE FAMILIES ---------- */
+  --font-disp: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---------- TYPE SCALE ---------- */
+  --text-xs:   12px;  --lh-xs:   16px;
+  --text-sm:   14px;  --lh-sm:   20px;
+  --text-base: 16px;  --lh-base: 24px;
+  --text-md:   18px;  --lh-md:   28px;
+  --text-lg:   20px;  --lh-lg:   28px;
+  --text-xl:   24px;  --lh-xl:   32px;
+  --text-2xl:  30px;  --lh-2xl:  38px;
+  --text-3xl:  38px;  --lh-3xl:  46px;
+
+  /* Display is for empty states, first run and export-complete only.
+     The working editor is dense; it has no hero. */
+  --display-1: clamp(34px, 4.6vw, 68px);
+  --display-2: clamp(28px, 3.2vw, 44px);
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold:600;
+  --weight-bold:    800;
+  --weight-extra:   900;
+
+  --tracking-display: -0.055em;
+  --tracking-tight:   -0.045em;
+  --tracking-snug:    -0.02em;
+  --tracking-normal:  0;
+  --tracking-caps:    0.16em;
+  --tracking-caps-wide: 0.24em;
+
+  --leading-display: 0.9;
+
+  /* ---------- SPACING (4px base) ---------- */
+  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;  --space-4: 16px;
+  --space-5: 20px;  --space-6: 24px;  --space-8: 32px;  --space-10: 40px;
+  --space-12: 48px; --space-16: 64px; --space-20: 80px; --space-24: 96px;
+
+  /* ---------- EDITOR GEOMETRY ---------- */
+  --track-h:    40px;  /* one timeline lane */
+  --ruler-h:    24px;  /* timecode ruler */
+  --sidebar-w:  320px; /* create-screen columns and inspector */
+  --hit-min:    32px;  /* smallest pointer target; trim handles grow to it on hover */
+
+  /* ---------- RADII ---------- */
+  --radius-none: 0;
+  --radius-sm: 2px;    /* data marks only: waveform bars, legend swatches */
+  --radius-md: 4px;
+  --radius-pill: 999px; /* scrollbar thumbs only */
+
+  /* ---------- MOTION ---------- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease: cubic-bezier(.2,.6,.2,1);
+}
+
+/* ============================================================
+   GROUNDS
+   Every role below exists in both blocks.
+   ============================================================ */
+
+:root,
+:root[data-mode="ink"] {
+  --bg:       #17171a; /* window */
+  --panel:    #1e1e22; /* columns, inspector, cards, lanes */
+  --mass:     #26262a; /* wells, clips, inline code */
+
+  --ink:      #EAE7E1; /* primary text */
+  --dim:      #A29C93; /* secondary */
+  --faint:    #8B857B; /* captions, micro-labels, timecode — 4.89:1 */
+  --faint-2:  #565249; /* disabled, placeholder */
+
+  --line:     #26262a;
+  --line-2:   #33333a;
+
+  --spot:     var(--vd-300);
+  --spot-ink: #17171a;
+  --spot-soft: color-mix(in srgb, var(--spot) 14%, transparent);
+
+  --warning:  #E8920C; /* uncertain edits awaiting review, low-confidence words */
+  --error:    #FF6166; /* failed stage, invalid plan, missing asset */
+  --cut:      color-mix(in srgb, var(--error) 10%, transparent); /* removed span fill; pair with strike + reason */
+  --code-bg:  var(--mass);
+  --shadow-lg: 0 12px 28px rgba(0,0,0,.45);
+  --ring:     0 0 0 2px var(--bg), 0 0 0 4px var(--spot);
+}
+
+:root[data-mode="paper"] {
+  --bg:       #f0ede6;
+  --panel:    #e7e3da;
+  --mass:     #ddd8cc;
+
+  --ink:      #16150f;
+  --dim:      #57534a;
+  --faint:    #635E52; /* 5.04:1 on --panel */
+  --faint-2:  #a09a8c;
+
+  --line:     #e3dfd4;
+  --line-2:   #cec8b9;
+
+  --spot:     var(--vd-700);
+  --spot-ink: #ffffff;
+  --spot-soft: color-mix(in srgb, var(--spot) 10%, transparent);
+
+  --warning:  #7A4B00; /* 5.21:1 on --mass */
+  --error:    #A8201A;
+  --cut:      color-mix(in srgb, var(--error) 10%, transparent);
+  --code-bg:  #EDEAE2;
+  --shadow-lg: 0 12px 28px rgba(22,21,15,.10);
+  --ring:     0 0 0 2px var(--bg), 0 0 0 4px var(--spot);
+}
+
+/* ============================================================
+   THE STAGE
+   The preview viewport shows the user's video, and video is judged
+   against black. It keeps one palette on both grounds. These are the
+   only chrome colours that do not follow the ground.
+   ============================================================ */
+:root {
+  --stage-bg:   #0b0b0d; /* letterbox around the frame */
+  --stage-safe: rgba(234,231,225,.35); /* caption / platform-UI safe-area guides */
+  --stage-text: #EAE7E1; /* overlay timecode on the stage */
+}
