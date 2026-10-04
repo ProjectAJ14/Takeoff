@@ -10,7 +10,8 @@ import { validate, type ErrorInfo } from '@takeoff/contracts';
 import { StaleRevisionError } from '@takeoff/project-store';
 import type { Engine } from './engine.ts';
 import { EngineError, toErrorInfo } from './errors.ts';
-import { badRequest, inspectFrames, isTerminal, mediaFile, requireEditDefaults, snapshot, startJob, type Workspace } from './workspace.ts';
+import { planRequest } from './requests.ts';
+import { badRequest, inspectFrames, isTerminal, mediaFile, requireEditDefaults, setEditDefaults, snapshot, startJob, type Workspace } from './workspace.ts';
 
 export const MAX_BODY_BYTES = 1024 * 1024;
 const SSE_INTERVAL_MS = 250;
@@ -43,7 +44,7 @@ class HttpError extends Error {
 
 const STATUS: Record<string, number> = {
   not_found: 404, path_not_approved: 403, stale_revision: 409, project_exists: 409, locked_object: 409, nothing_to_undo: 409, nothing_to_redo: 409,
-  revision_not_found: 404, internal: 500, renderer_unavailable: 503, egress_denied: 403, network_denied: 403,
+  revision_not_found: 404, internal: 500, renderer_unavailable: 503, egress_denied: 403, network_denied: 403, director_unavailable: 503, brand_not_found: 404,
 };
 const statusOf = (code: string) => STATUS[code] ?? (code.startsWith('invalid') ? 400 : 422);
 
@@ -136,6 +137,11 @@ export function startServer(ws: Workspace, opts: ServerOptions = {}): Promise<Ru
     switch (m) {
       case 'GET /v1/capabilities':
         return send(res, 200, (await ws.capabilities()).dto);
+      case 'GET /v1/system': {
+        // Machine facts the capabilities DTO has no field for (first-run check, PRD §5.1).
+        const { diskFreeBytes, ffmpeg, renderer, fonts } = await ws.capabilities();
+        return send(res, 200, { schemaVersion: '1.0', diskFreeBytes, ffmpeg, renderer, fonts });
+      }
       case 'GET /v1/projects':
         return send(res, 200, { schemaVersion: '1.0', projects: ws.list() });
       case 'POST /v1/projects': {
@@ -222,6 +228,33 @@ export function startServer(ws: Workspace, opts: ServerOptions = {}): Promise<Ru
         const opts = { profile: b.profile, destinationDir: b.destinationDir, burnCaptions: b.burnCaptions ?? true, idempotencyKey: k };
         e.approvedPath(b.destinationDir); // refuse before starting the job
         return send(res, 202, startJob(e, k, () => e.exportProject(opts)));
+      }
+      case 'POST /v1/projects/:/edit-defaults': {
+        const b = await body(req);
+        const known = ['settings', 'targetSeconds', 'lengthPolicy', 'takes', 'brandProfileId', 'brief', 'captionTemplate', 'zoomMaxScale'];
+        const extra = Object.keys(b).find((k) => !known.includes(k));
+        if (extra) throw badRequest(`unknown field ${extra.slice(0, 40)}`);
+        if (b.settings !== undefined && (b.settings === null || typeof b.settings !== 'object' || Array.isArray(b.settings))) throw badRequest('settings must be an object');
+        return send(res, 200, { schemaVersion: '1.0', editDefaults: setEditDefaults(project(), b) });
+      }
+      case 'POST /v1/projects/:/brands': {
+        const id = await project().saveBrandProfile(await body(req));
+        return send(res, 201, { schemaVersion: '1.0', ref: id });
+      }
+      case 'GET /v1/projects/:/providers':
+        return send(res, 200, { schemaVersion: '1.0', policy: project().broker.policy() });
+      // No POST: approving a provider widens egress, so only the desktop main process (in-process, after a
+      // user action) may call broker.setPolicy. An API caller must not grant itself transfers (PRD §14).
+      case 'POST /v1/projects/:/requests': {
+        const b = await body(req);
+        const e = project();
+        const { intents, patch } = await planRequest(e, b.text, b.baseRevision);
+        return send(res, 200, { ...revisionOf(e.applyPatch(patch)), intents, ops: patch.ops.length });
+      }
+      case 'POST /v1/diagnostics': {
+        const b = await body(req);
+        if (typeof b.destinationDir !== 'string') throw badRequest('destinationDir is required');
+        return send(res, 201, { schemaVersion: '1.0', dir: await ws.diagnosticBundle(b.destinationDir) });
       }
       case 'POST /v1/starter-pack': {
         const b = await body(req);

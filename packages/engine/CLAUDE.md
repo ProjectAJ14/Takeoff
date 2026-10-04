@@ -19,7 +19,8 @@ It also serves the loopback HTTP API, the `takeoff` CLI and the MCP stdio server
 | `src/log.ts` | `Logger` (JSONL in `<appDataDir>/logs`), `redact` |
 | `src/errors.ts` | `EngineError` (`code`, `message`, `remedy`), `toErrorInfo` |
 | `src/workspace.ts` | `Workspace`: project registry (`<appDataDir>/projects.json`, id → root), one open `Engine` per root, app-level capabilities and starter pack; shared ops (`snapshot`, `artifacts`, `mediaFile`, `inspectFrames`, `checkPlan`, edit defaults) |
-| `src/server.ts` | `startServer(ws, {port, token, appOrigin})`: versioned `/v1` loopback API (PRD §8 table plus list/snapshot, undo/redo/revert, media with Range, job SSE, starter pack) |
+| `src/server.ts` | `startServer(ws, {port, token, appOrigin})`: versioned `/v1` loopback API (PRD §8 table plus list/snapshot, undo/redo/revert, media with Range, job SSE, starter pack, `/system`, edit defaults, brands, providers (read only), plain-language requests, diagnostics) |
+| `src/requests.ts` | `planRequest`: Ollama on loopback classifies a request into `REQUEST_INTENTS`; product code maps intents to patch ops |
 | `src/mcp.ts` | `runMcp`: MCP stdio (JSON-RPC 2.0, protocol `2025-06-18`), the ten PRD tools, Ajv-checked inputs |
 | `src/cli.ts`, `bin/takeoff.js` | `takeoff` CLI (`main`), `renderTest` (PRD §17 five-second clip) |
 | `skills/takeoff-agent/SKILL.md` | Portable agent skill: tool contract and patch ops |
@@ -83,6 +84,15 @@ Project layout written by the engine: `assets/<id>.json` (manifests), `brands/<i
 - MCP and CLI use the same `Workspace` and `Engine` calls as HTTP, so approved roots,
   `baseRevision` and lock rules are identical. There is no shell tool. stdout of `mcp`
   carries only JSON-RPC lines.
+- `Workspace.addApprovedRoot` (folder or single file) is in-process only, for the desktop main process
+  after a native picker; no HTTP, MCP or CLI route reaches it. It updates the workspace and every open engine.
+- Provider approvals (`broker.setPolicy`) are likewise in-process only: `GET /v1/projects/:id/providers`
+  reads the policy, and no HTTP, MCP or CLI route writes it, so an API caller cannot grant itself egress.
+- Edit defaults may also carry `takes` (selected takes in story order), `brandProfileId`, `brief`,
+  `captionTemplate` (applied to every generated caption) and `zoomMaxScale` (caps punch scales); both
+  are applied before `mergeLocks`, so locked objects keep their values. `null` clears a field.
+- Plain-language requests: the model only picks intent names from an allowlist; it never produces ids,
+  timings, text or settings. No Ollama model → `director_unavailable` (503).
 - Settings have no defaults (contracts rule): a project's edit defaults are stored once
   (create-project settings, CLI `--toggles`, MCP `propose_edit.settings`) and merged later.
 - Starter pack: the network grant covers only the base-model download; with the model

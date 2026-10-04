@@ -2,7 +2,8 @@
 
 `packages/project-store` holds a project's durable state: the plan revision
 history, assets, the transcript cache, jobs, artifacts and an append-only event
-log. It is a library. No app or CLI calls it yet.
+log. The engine opens one store per project (see [engine.md](engine.md)); the
+CLI, MCP server and HTTP API reach it only through the engine.
 
 ```ts
 import { createProject, openProject } from '@takeoff/project-store';

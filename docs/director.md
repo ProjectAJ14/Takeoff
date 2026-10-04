@@ -1,12 +1,14 @@
-# Director and agent integration
+# Director
 
 `packages/director` proposes edit plans. Product code detects the candidates and
 builds every timing, text label and id. A model, when one is used, only makes
 choices over ids that the product already created. Every plan then goes through
 validation before anything uses it.
 
-There is no MCP server, CLI or HTTP API for agents yet. Today the director is a
-TypeScript library, called as shown below.
+The engine calls the director during Edit Video and picks the adapter (see
+[engine.md](engine.md#director-selection)). Outside agents don't call the
+director directly: they use the `takeoff` CLI, the MCP tools or the HTTP API,
+documented in [agents.md](agents.md). As a library it is called like this:
 
 ```ts
 import { directPlan, OllamaDirector, RulesDirector } from '@takeoff/director';
@@ -75,8 +77,11 @@ it is downgraded to `low`.
 - **Leading dead air.** The cut runs from 0 to 150 ms before the first word.
 - **Trailing dead air.** The cut runs from 150 ms after the last word to the
   end of the source. This runs only when `durationsUs` is known.
+- **VAD edges.** VAD speech that straddles a cut's edge (speech running on past
+  the last word, or starting before the next) moves that edge to the speech
+  boundary. A cut left shorter than 120 ms is dropped.
 - **Tier.** `high` when the surrounding words are aligned and no VAD speech
-  falls inside the cut. Otherwise `medium`.
+  falls wholly inside the cut. Otherwise `medium`.
 - `@takeoff/media` `detectSilence` is a separate FFmpeg `silencedetect`
   measurement. The director doesn't use it.
 
@@ -117,7 +122,8 @@ deterministic: the same request and context always produce the same plan.
     non-aligned words adds an `alignment_uncertain` marker (severity `info`).
 - **Segments** (`seg_0001…`) are each asset's span minus the merged removals.
   The span ends at `durationsUs`, or at the last word plus 150 ms. A piece left
-  between cuts is kept only if it holds whole words or overlaps VAD speech.
+  between cuts is kept only if it holds whole words, or is at least 300 ms long
+  and overlaps VAD speech. A shorter wordless sliver is dropped as dead air.
 - **Target length (F14).** The limit comes from `output.targetFrames` when
   `lengthPolicy` isn't `none`; otherwise it comes from `settings.targetSeconds`
   as a soft target. While the plan is over the limit, the director drops the

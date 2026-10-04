@@ -9,6 +9,7 @@ import {
   validate,
   type AssetManifest,
   type BrandProfile,
+  type CaptionTemplate,
   type CompiledTimeline,
   type DirectorRequest,
   type EditPlan,
@@ -94,6 +95,12 @@ export interface PipelineOptions {
   brandProfileId?: string;
   /** Creative brief. Kept in the job snapshot; the DirectorRequest DTO has no field for it yet. */
   brief?: string;
+  /** Takes to use, in story order (default: every take, in import order). */
+  takes?: Id[];
+  /** Caption template for every generated caption (default: the director's restrained). */
+  captionTemplate?: CaptionTemplate;
+  /** Upper bound for generated punch zooms, 1.0–1.25 (F08). */
+  zoomMaxScale?: number;
   idempotencyKey: string;
   baseRevision: number;
   director?: DirectorChoice;
@@ -771,7 +778,9 @@ export class Engine {
   // ---------- stages ----------
 
   async #prepare(st: RunState): Promise<Partial<RunState>> {
-    const takes = this.#pool('takes');
+    const pool = this.#pool('takes');
+    const order = st.opts.takes as Id[] | undefined;
+    const takes = order ? order.flatMap((id) => pool.filter((m) => m.id === id)) : pool;
     if (!takes.length) throw new EngineError('no_takes', 'there is no footage in the takes pool', 'Add at least one recording as a take.');
     await this.#preflight(takes.reduce((s, m) => s + (m.probe.durationUs ?? 0) / 1e6, 0));
     return { takes: takes.map((m) => m.id) };
@@ -908,6 +917,10 @@ export class Engine {
     }
     if (st.noSpeech?.length && req.words.length) st.warnings.push({ code: 'no_speech', message: `${st.noSpeech.length} take(s) had no speech and were left out`, refs: st.noSpeech });
     plan.brandProfileRef = st.opts.brandProfileRef ?? null;
+    // Create-screen strength settings; locked objects are restored by mergeLocks below.
+    const { captionTemplate, zoomMaxScale } = st.opts as Pick<PipelineOptions, 'captionTemplate' | 'zoomMaxScale'>;
+    if (captionTemplate) for (const c of plan.captions) c.template = captionTemplate;
+    if (zoomMaxScale) for (const t of plan.transforms) if (t.kind === 'punch') t.scale = Math.min(t.scale, zoomMaxScale);
     const head = this.store.getPlan();
     plan = mergeLocks(plan, head?.plan);
     const report = validatePlan(plan, ctx);
@@ -1134,23 +1147,28 @@ export class Engine {
   }
 
   /** Versions, capabilities and redacted logs in a folder the user can inspect before sharing. */
-  async diagnosticBundle(destinationDir: string): Promise<string> {
-    const dir = join(this.approvedPath(destinationDir), `takeoff-diagnostics-${Date.now()}`);
-    await mkdir(join(dir, 'logs'), { recursive: true });
-    await writeFile(join(dir, 'versions.json'), JSON.stringify({ ...VERSIONS, node: process.versions.node, platform: process.platform, arch: process.arch }, null, 2));
-    await writeFile(join(dir, 'capabilities.json'), JSON.stringify((await this.capabilities()).dto, null, 2));
-    const raw = await readFile(this.logger.file, 'utf8').catch(() => '');
-    const lines = raw.split('\n').filter(Boolean).flatMap((l) => {
-      try {
-        const j = JSON.parse(l) as Record<string, unknown>;
-        return [JSON.stringify({ ts: j.ts, event: j.event, ...redact(j) })];
-      } catch {
-        return [];
-      }
-    });
-    await writeFile(join(dir, 'logs', 'engine.jsonl'), lines.join('\n') + (lines.length ? '\n' : ''));
-    return dir;
+  diagnosticBundle(destinationDir: string): Promise<string> {
+    return writeDiagnostics(this, destinationDir);
   }
+}
+
+/** Shared by Engine and Workspace (no project open): versions, capabilities and redacted logs. */
+export async function writeDiagnostics(src: { approvedPath(p: string): string; capabilities(): Promise<EngineCapabilities>; logger: Logger }, destinationDir: string): Promise<string> {
+  const dir = join(src.approvedPath(destinationDir), `takeoff-diagnostics-${Date.now()}`);
+  await mkdir(join(dir, 'logs'), { recursive: true });
+  await writeFile(join(dir, 'versions.json'), JSON.stringify({ ...VERSIONS, node: process.versions.node, platform: process.platform, arch: process.arch }, null, 2));
+  await writeFile(join(dir, 'capabilities.json'), JSON.stringify((await src.capabilities()).dto, null, 2));
+  const raw = await readFile(src.logger.file, 'utf8').catch(() => '');
+  const lines = raw.split('\n').filter(Boolean).flatMap((l) => {
+    try {
+      const j = JSON.parse(l) as Record<string, unknown>;
+      return [JSON.stringify({ ts: j.ts, event: j.event, ...redact(j) })];
+    } catch {
+      return [];
+    }
+  });
+  await writeFile(join(dir, 'logs', 'engine.jsonl'), lines.join('\n') + (lines.length ? '\n' : ''));
+  return dir;
 }
 
 function sha256File(path: string): string {

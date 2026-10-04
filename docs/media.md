@@ -7,8 +7,9 @@ Two workers read source media:
 - `workers/transcribe` is a Python command-line worker. It turns an analysis
   WAV into a `transcript`.
 
-Neither is wired into an app or pipeline yet. Both are called directly from code
-or tests.
+The engine calls both: `ingest` on import, and the worker (through
+`uv run --directory workers/transcribe`) in the Transcribe stage. See
+[engine.md](engine.md).
 
 ## Requirements
 
@@ -75,8 +76,8 @@ does that through `ProjectStore.importAsset` (see [projects.md](projects.md)).
 |---|---|
 | `detectSilence(path, {thresholdDb = −35, minDurationUs = 300000})` | Silent spans in source µs, from `silencedetect` |
 | `measureLoudness(path)` | EBU R128 `integratedLufs`, `truePeakDbtp`, `lraLu`, `thresholdLufs` (from the `loudnorm` first pass) |
-| `analyzeVoice(path)` | `clippingRatio`, `dcOffset`, `peakDb`, `rmsDb`, `noiseFloorDb` (from `astats`). It measures only; nothing processes the voice yet |
-| `analyzeColor(path, {samples = 8})` | `signalstats` on evenly sampled frames converted to 8-bit `yuv420p`, plus one bounded correction: brightness ±0.08, contrast 1–1.15 (only when both ends have headroom), saturation 1–1.1, midtone balance ±0.1. Callers must not apply it to HDR. Nothing applies it yet |
+| `analyzeVoice(path)` | `clippingRatio`, `dcOffset`, `peakDb`, `rmsDb`, `noiseFloorDb` (from `astats`). It measures only. Studio voice processing happens in the renderer's mix ([rendering.md](rendering.md#composition)) |
+| `analyzeColor(path, {samples = 8})` | `signalstats` on evenly sampled frames converted to 8-bit `yuv420p`, plus one bounded correction: brightness ±0.08, contrast 1–1.15 (only when both ends have headroom), saturation 1–1.1, midtone balance ±0.1. Callers must not apply it to HDR. The browser renderer applies it per source when `autoColor` is on, skipping HDR |
 | `waveformPeaks(path, {buckets = 800})` | A peak envelope in 0..1, decoded mono at 8 kHz |
 | `extractFrame(path, us, outPng, {width})` | PNG of the frame whose `[pts, next pts)` contains `us`, rotation applied. At or past the end it raises `invalid_argument` |
 | `thumbnail(path, outPng, {width = 320})` | A representative frame chosen from the first 60 |
@@ -163,10 +164,16 @@ download-model --model <name> --allow-network
   - `sourceHash` defaults to the WAV's SHA-256.
 - The last line is `{"type":"result","out","sourceHash","configHash","speechIntervals":[{"startUs","endUs"}]}`.
   Silero VAD speech intervals travel in this line, because the transcript
-  schema has no field for them.
+  schema has no field for them. They are computed with a 300 ms minimum silence
+  and 30 ms speech pad (`VAD_REPORT`), so pauses the director cuts (≥ 700 ms)
+  show as gaps. faster-whisper's own defaults (2 s and 400 ms), which ASR still
+  uses for its `vad_filter`, merged those pauses into speech.
+- **Missed speech.** Any VAD interval of at least 500 ms that no word overlaps
+  is transcribed again on its own and merged in source order. Whisper can end a
+  window early and silently drop later speech (seen with a glossary prompt).
 - `configHash` is the SHA-256 of canonical JSON over: backend, faster-whisper
   version, model, compute type, language, glossary, VAD version
-  (`silero_vad_v6`), word timestamps, and the decode options (`beam_size: 5`,
+  (`silero_vad_v6_s300_p30`), word timestamps, and the decode options (`beam_size: 5`,
   `condition_on_previous_text: false`). The worker caches nothing.
 
 **`probe`** prints `{"type":"capabilities","backend","models":[installed names],"devices","defaultDevice","versions"}`.

@@ -9,8 +9,9 @@ section that owns a feature before building it. Read the nearest nested
 
 ## Repository map
 
-Pre-implementation: only `docs/`, `design/`, `.claude/` and `.github/` exist.
-The package layout below follows PRD §17 "Initial engineering deliverables".
+Every row below exists and is tested except those marked *(not created)*;
+`docs/architecture.md` owns the package graph. The layout follows PRD §17
+"Initial engineering deliverables".
 When you create a package, add its row's `CLAUDE.md` in the same PR, with the
 same shape as this file: what it owns, its invariants, its checks.
 
@@ -25,10 +26,10 @@ same shape as this file: what it owns, its invariants, its checks.
 | `packages/compiler/` | Plan validation and the source→output timeline compiler | §7.4, §9.2 |
 | `packages/renderer-api/` | Renderer-neutral compiled-plan interface and scene contract | §7.4 |
 | `packages/renderer-browser/` | Chromium/Playwright + FFmpeg renderer, sandboxed scenes | §7.4, §15 |
-| `packages/renderer-remotion/` | Optional renderer, behind the license decision | §7.1, §15 |
+| `packages/renderer-remotion/` | *(not created)* Optional renderer, behind the license decision | §7.1, §15 |
 | `packages/engine/` | Job coordinator, pipeline, QA, export, provider broker, loopback HTTP API, `takeoff` CLI, MCP server | §7.2, §8, §11, §13, §14 |
-| `packages/app/` | Electron shell and React/TypeScript UI | §5 |
-| `workers/media/` | Probe, ingest, proxies, FFmpeg processes (Python or native) | F01 |
+| `packages/app/` | Electron shell and React/TypeScript UI (in progress); talks to the engine over loopback HTTP | §5 |
+| `workers/media/` | Probe, ingest, proxies, analysis; spawns FFmpeg (TypeScript, `@takeoff/media`) | F01 |
 | `workers/transcribe/` | VAD, ASR, alignment, glossary (Python) | F02 |
 | `.claude/skills/` | Repository design and documentation-verification contracts | — |
 | `.github/` | CI, docs-sync guard, PR template | — |

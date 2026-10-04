@@ -4,13 +4,13 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
-import { validate, type Id, type Job, type Settings } from '@takeoff/contracts';
+import { validate, type CaptionTemplate, type Id, type Job, type Settings } from '@takeoff/contracts';
 import { frameToUs, validatePlan } from '@takeoff/compiler';
 import { extractFrame, hashFile } from '@takeoff/media';
 import { atomicWrite } from '@takeoff/project-store';
 import { LOCAL_ONLY } from './broker.ts';
 import { engineCapabilities, type EngineCapabilities } from './capabilities.ts';
-import { Engine, approvedPath, bundledFonts, installStarterPack, readLibrary, type EngineOptions, type LengthPolicy, type LibraryEntry } from './engine.ts';
+import { Engine, approvedPath, bundledFonts, installStarterPack, readLibrary, writeDiagnostics, type EngineOptions, type LengthPolicy, type LibraryEntry } from './engine.ts';
 import { EngineError } from './errors.ts';
 import { Logger } from './log.ts';
 import { workerTranscriber, type Transcriber } from './transcribe.ts';
@@ -24,7 +24,15 @@ export interface EditDefaults {
   settings: Settings;
   targetSeconds: number | null;
   lengthPolicy: LengthPolicy;
+  /** Selected takes in story order; absent = every take in import order. */
+  takes?: Id[];
+  brandProfileId?: string;
+  brief?: string;
+  captionTemplate?: CaptionTemplate;
+  zoomMaxScale?: number;
 }
+/** Optional create-screen fields: present = set, null = clear. */
+type EditExtras = { [K in 'takes' | 'brandProfileId' | 'brief' | 'captionTemplate' | 'zoomMaxScale']?: EditDefaults[K] | null };
 export type FrameRequest = { clock: 'source'; assetId: Id; us: number } | { clock: 'output'; frame: number };
 
 const EDIT_DEFAULTS = 'editDefaults';
@@ -64,7 +72,8 @@ export class Workspace {
     mkdirSync(this.appDataDir, { recursive: true });
     this.approvedRoots = opts.approvedRoots.map((r) => realpathSync(r));
     this.transcriber = opts.transcriber ?? workerTranscriber();
-    this.opts = { ...opts, appDataDir: this.appDataDir, transcriber: this.transcriber };
+    // Shares the approvedRoots array, so engines opened later see roots added at runtime.
+    this.opts = { ...opts, appDataDir: this.appDataDir, transcriber: this.transcriber, approvedRoots: this.approvedRoots };
     this.logger = new Logger(join(this.appDataDir, 'logs'));
   }
   /** For engineCapabilities when no project is open: statfs runs on appDataDir. */
@@ -86,6 +95,22 @@ export class Workspace {
 
   approved(p: string): string {
     return approvedPath(p, this.approvedRoots);
+  }
+  /** Alias so Workspace satisfies writeDiagnostics' source shape. */
+  approvedPath(p: string): string {
+    return this.approved(p);
+  }
+  /**
+   * Approves a folder (or a single file) the user picked in a native dialog. In-process only: the desktop
+   * main process calls it; no HTTP, MCP or CLI surface may, or any API caller could widen its own access.
+   */
+  addApprovedRoot(p: string): string {
+    const real = realpathSync(p);
+    for (const roots of [this.approvedRoots, ...[...this.#engines.values()].map((e) => e.approvedRoots)]) if (!roots.includes(real)) roots.push(real);
+    return real;
+  }
+  diagnosticBundle(destinationDir: string): Promise<string> {
+    return writeDiagnostics(this, destinationDir);
   }
 
   // ---------- registry ----------
@@ -159,14 +184,28 @@ export function editDefaults(e: Engine): EditDefaults | undefined {
   return e.store.getSetting<EditDefaults>(EDIT_DEFAULTS);
 }
 /** Merges toggles/target over the stored defaults; the merged settings must be complete and valid. */
-export function setEditDefaults(e: Engine, o: { settings?: Partial<Settings>; targetSeconds?: number | null; lengthPolicy?: LengthPolicy }): EditDefaults {
+export function setEditDefaults(e: Engine, o: { settings?: Partial<Settings>; targetSeconds?: number | null; lengthPolicy?: LengthPolicy } & EditExtras): EditDefaults {
   const prev = editDefaults(e);
+  const bad = (m: string, remedy: string) => new EngineError('invalid_settings', m, remedy);
+  const extras: EditExtras = {};
+  if (o.takes != null) {
+    const pool = (id: unknown) => typeof id === 'string' && e.store.getSetting<{ pool: string }>(`asset:${id}`)?.pool === 'takes';
+    if (!Array.isArray(o.takes) || !o.takes.length || o.takes.length > 500 || !o.takes.every(pool) || new Set(o.takes).size !== o.takes.length) throw bad('takes must list distinct takes of this project', 'Select at least one take.');
+  }
+  if (o.brief != null && (typeof o.brief !== 'string' || o.brief.length > 500)) throw bad('the brief must be text of at most 500 characters', 'Shorten the brief.');
+  if (o.brandProfileId != null && (typeof o.brandProfileId !== 'string' || !e.store.getSetting(`brand:${o.brandProfileId}`))) throw bad('that brand profile does not exist in this project', 'Save the brand profile first.');
+  if (o.captionTemplate != null && !['restrained', 'energetic', 'static'].includes(o.captionTemplate)) throw bad('unknown caption style', 'Use restrained, energetic or static.');
+  if (o.zoomMaxScale != null && !(typeof o.zoomMaxScale === 'number' && o.zoomMaxScale >= 1 && o.zoomMaxScale <= 1.25)) throw bad('maximum zoom must be 1.0–1.25', 'Choose a maximum zoom between 1.0 and 1.25.');
+  for (const k of ['takes', 'brandProfileId', 'brief', 'captionTemplate', 'zoomMaxScale'] as const) {
+    const v = o[k] === undefined ? prev?.[k] : o[k];
+    if (v != null) (extras as Record<string, unknown>)[k] = v;
+  }
   const settings = validateSettings({ ...prev?.settings, ...o.settings });
   const targetSeconds = o.targetSeconds !== undefined ? o.targetSeconds : (prev?.targetSeconds ?? null);
   if (targetSeconds !== null && !(Number.isInteger(targetSeconds) && targetSeconds >= 10 && targetSeconds <= 180)) throw new EngineError('invalid_settings', 'target length must be auto or 10–180 seconds', 'Pass --target auto or a whole number of seconds between 10 and 180.');
   if (o.lengthPolicy !== undefined && !['hard_max', 'soft_target', 'none'].includes(o.lengthPolicy)) throw new EngineError('invalid_settings', 'unknown length policy', 'Use hard_max or soft_target.');
   const lengthPolicy = o.lengthPolicy ?? (targetSeconds === null ? 'none' : (prev?.lengthPolicy && prev.lengthPolicy !== 'none' ? prev.lengthPolicy : 'soft_target'));
-  const next = { settings, targetSeconds, lengthPolicy };
+  const next: EditDefaults = { settings, targetSeconds, lengthPolicy, ...(extras as Partial<EditDefaults>) };
   e.store.setSetting(EDIT_DEFAULTS, next);
   return next;
 }

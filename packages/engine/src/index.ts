@@ -31,3 +31,5 @@ export { Workspace, defaultAppDataDir, validateSettings, setEditDefaults, editDe
 export { startServer, MAX_BODY_BYTES, type RunningServer, type ServerOptions } from './server.ts';
 export { runMcp, TOOLS, MCP_PROTOCOL_VERSION } from './mcp.ts';
 export { main as cliMain, renderTest } from './cli.ts';
+export { planRequest, REQUEST_INTENTS, MAX_REQUEST_CHARS } from './requests.ts';
+export { writeDiagnostics } from './engine.ts';

@@ -36,14 +36,14 @@ function call(port: number, method: string, path: string, o: { token?: string | 
   });
 }
 
-async function setup() {
+async function setup(extra: { fetch?: typeof fetch } = {}) {
   const { dir, cleanup } = await tmp('takeoff-server-');
   const media = join(dir, 'media');
   await mkdir(media);
   const take = await makeVideo(join(media, 'take.mp4'));
   const renderer = fakeRenderer();
   const mod: RendererModule = { createRenderer: () => renderer };
-  const ws = new Workspace({ appDataDir: join(dir, 'appdata'), approvedRoots: [dir], transcriber: fakeTranscriber(), loadRenderer: async () => mod, asr: { model: 'tiny', language: 'en' } });
+  const ws = new Workspace({ appDataDir: join(dir, 'appdata'), approvedRoots: [dir], transcriber: fakeTranscriber(), loadRenderer: async () => mod, asr: { model: 'tiny', language: 'en' }, ...extra });
   const token = 't'.repeat(43);
   const s = await startServer(ws, { token, appOrigin: 'app://takeoff' });
   const api = (method: string, path: string, o: Parameters<typeof call>[3] = {}) => call(s.port, method, path, { token, ...o });
@@ -155,6 +155,99 @@ test('project lifecycle: create, import, Edit Video job, plan, 409 on stale PATC
 
     const caps = await t.api('GET', '/v1/capabilities');
     assert.ok(validate('capabilities', caps.json).ok);
+    const sys = (await t.api('GET', '/v1/system')).json;
+    assert.equal(typeof sys.ffmpeg, 'boolean');
+    assert.ok(sys.diskFreeBytes === null || sys.diskFreeBytes > 0);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+test('app routes: runtime approved roots (in-process only), edit defaults with take order, brand, providers, requests, diagnostics', async () => {
+  // A fake local director: Ollama tags + a chat reply that names one allowlisted and one unknown intent.
+  const seen: string[] = [];
+  const fakeFetch = (async (url: string, init?: RequestInit) => {
+    seen.push(String(url));
+    assert.match(String(url), /^http:\/\/127\.0\.0\.1:11434\//, 'requests only ever reach loopback Ollama');
+    if (String(url).endsWith('/api/tags')) return Response.json({ models: [{ name: 'llama3:latest' }] });
+    assert.ok(String(init?.body).includes('<untrusted_data>'), 'the request text is fenced');
+    return Response.json({ message: { content: JSON.stringify({ intents: ['captions_static', 'run_shell'] }) } });
+  }) as typeof fetch;
+  const t = await setup({ fetch: fakeFetch });
+  try {
+    // A folder outside the approved roots is refused until the main process approves it in-process.
+    const { dir: other, cleanup: cleanOther } = await tmp('takeoff-picked-');
+    try {
+      const second = await makeVideo(join(other, 'second.mp4'), 6);
+      const created = await t.api('POST', `/v1/projects?root=${encodeURIComponent(join(t.dir, 'p2'))}`, { body: { schemaVersion: '1.0', name: 'App', settings } });
+      const id = created.json.projectId;
+      const imp = (path: string) => t.api('POST', `/v1/projects/${id}/assets`, { body: { schemaVersion: '1.0', items: [{ source: 'path', path }] } });
+      assert.equal((await imp(second)).json.items[0].error.code, 'path_not_approved');
+      for (const path of ['/v1/approved-roots', '/v1/roots', '/v1/workspace/roots']) assert.equal((await t.api('POST', path, { body: { path: other } })).status, 404, 'no HTTP route widens access');
+      t.ws.addApprovedRoot(second); // a single picked file
+      const a2 = (await imp(second)).json.items[0].assetId;
+      const a1 = (await imp(t.take)).json.items[0].assetId;
+      assert.ok(a1 && a2);
+
+      const bad = await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { takes: ['a_nope'] } });
+      assert.equal(bad.status, 400);
+      assert.equal((await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { zoomMaxScale: 2 } })).status, 400);
+      assert.equal((await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { root: '/' } })).status, 400);
+      assert.equal((await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { brandProfileId: 'nope' } })).status, 400);
+
+      const brand = { schemaVersion: '1.0', id: 'mine', version: 1, name: 'Mine', palette: [{ role: 'primary', color: '#0A84FF' }], fonts: [{ role: 'caption', family: 'Inter', assetId: null, license: 'OFL-1.1' }], logos: [], captionStyle: { template: 'restrained', highlightColor: '#FFD60A', positionPolicy: 'safe_bottom' }, hookTone: 'plain', glossary: [], prohibitedClaims: [], motionIntensity: 'restrained', safeLayouts: ['full'], music: { moods: [], bannedCategories: [] }, sfx: { bannedCategories: [] }, ctaTemplates: [], aspectPresets: [{ width: 1080, height: 1920 }], provenance: { source: 'manual', sourceUrl: null, createdAt: '2026-10-05T12:00:00Z' } };
+      assert.equal((await t.api('POST', `/v1/projects/${id}/brands`, { body: { ...brand, palette: 'x' } })).status, 400);
+      assert.equal((await t.api('POST', `/v1/projects/${id}/brands`, { body: brand })).status, 201);
+
+      const set = await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { takes: [a1], brandProfileId: 'mine', brief: 'Keep it calm.', captionTemplate: 'static', zoomMaxScale: 1.1, targetSeconds: 30, lengthPolicy: 'hard_max' } });
+      assert.equal(set.status, 200, set.text);
+      assert.deepEqual(set.json.editDefaults.takes, [a1]);
+      assert.equal(set.json.editDefaults.lengthPolicy, 'hard_max');
+      // Clearing one field keeps the rest.
+      const cleared = await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { brief: null, targetSeconds: null } });
+      assert.equal(cleared.json.editDefaults.brief, undefined);
+      assert.equal(cleared.json.editDefaults.captionTemplate, 'static');
+
+      const started = await t.api('POST', `/v1/projects/${id}/jobs`, { body: { schemaVersion: '1.0', stage: 'Prepare', profile: 'draft', baseRevision: 0, idempotencyKey: 'edit-video-app' } });
+      assert.equal((await waitJob(t.api, started.json.id)).state, 'succeeded');
+      let plan = (await t.api('GET', `/v1/projects/${id}/plan`)).json;
+      assert.deepEqual([...new Set(plan.plan.segments.map((g: { assetId: string }) => g.assetId))], [a1], 'only the selected take is used');
+      assert.ok(plan.plan.captions.length && plan.plan.captions.every((c: { template: string }) => c.template === 'static'));
+      assert.ok(plan.plan.transforms.every((x: { kind: string; scale?: number }) => x.kind !== 'punch' || x.scale! <= 1.1));
+      assert.equal(plan.plan.brandProfileRef, 'brands/mine-v1.json');
+
+      // Order follows the take list.
+      await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { takes: [a2, a1], captionTemplate: 'energetic' } });
+      const again = await t.api('POST', `/v1/projects/${id}/jobs`, { body: { schemaVersion: '1.0', stage: 'Prepare', profile: 'draft', baseRevision: plan.revision, idempotencyKey: 'edit-video-app-2' } });
+      assert.equal((await waitJob(t.api, again.json.id)).state, 'succeeded');
+      plan = (await t.api('GET', `/v1/projects/${id}/plan`)).json;
+      assert.deepEqual([...new Set(plan.plan.segments.map((g: { assetId: string }) => g.assetId))], [a2, a1]);
+
+      // Plain-language request: only the allowlisted intent becomes ops; stale revisions are refused.
+      assert.equal((await t.api('POST', `/v1/projects/${id}/requests`, { body: { text: 'static captions please', baseRevision: plan.revision - 1 } })).status, 409);
+      assert.equal((await t.api('POST', `/v1/projects/${id}/requests`, { body: { text: 'x'.repeat(501), baseRevision: plan.revision } })).status, 400);
+      const r = await t.api('POST', `/v1/projects/${id}/requests`, { body: { text: 'static captions please', baseRevision: plan.revision } });
+      assert.equal(r.status, 200, r.text);
+      assert.deepEqual(r.json.intents, ['captions_static']);
+      assert.equal(r.json.revision, plan.revision + 1);
+      assert.ok(seen.length >= 2);
+
+      // Providers: off by default, readable over HTTP, never writable there (in-process only), validated on save.
+      assert.equal((await t.api('GET', `/v1/projects/${id}/providers`)).json.policy.networkPolicy, 'local_only');
+      assert.equal((await t.api('POST', `/v1/projects/${id}/providers`, { body: { networkPolicy: 'approved_providers', approvals: [{ provider: 'anthropic', dataTypes: ['transcript'], budgetUsd: 1 }] } })).status, 404);
+      assert.equal((await t.api('GET', `/v1/projects/${id}/providers`)).json.policy.networkPolicy, 'local_only');
+      const broker = t.ws.byId(id).broker;
+      assert.throws(() => broker.setPolicy({ networkPolicy: 'approved_providers', approvals: [{ provider: 'evil', dataTypes: ['video'], budgetUsd: 1 }] } as never));
+      assert.deepEqual(broker.setPolicy({ networkPolicy: 'approved_providers', approvals: [{ provider: 'anthropic', dataTypes: ['transcript'], budgetUsd: 1 }] } as never).approvals[0]!.dataTypes, ['transcript']);
+
+      // Diagnostics without a project open, only into an approved folder.
+      assert.equal((await t.api('POST', '/v1/diagnostics', { body: { destinationDir: '/etc' } })).status, 403);
+      const diag = await t.api('POST', '/v1/diagnostics', { body: { destinationDir: t.dir } });
+      assert.equal(diag.status, 201, diag.text);
+      assert.ok(diag.json.dir.startsWith(t.dir) || diag.json.dir.includes('takeoff-diagnostics-'));
+    } finally {
+      await cleanOther();
+    }
   } finally {
     await t.cleanup();
   }

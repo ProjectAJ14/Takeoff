@@ -75,4 +75,5 @@ evidence and settings, and returns JSON that is validated before anything runs.
 [schema.md](schema.md) (contracts) · [timeline.md](timeline.md) (compiler) ·
 [projects.md](projects.md) (project-store) · [media.md](media.md) (media and
 transcription workers) · [director.md](director.md) · [rendering.md](rendering.md)
-· [features.md](features.md) (feature status)
+· [engine.md](engine.md) · [agents.md](agents.md) (CLI, MCP, HTTP API)
+· [privacy.md](privacy.md) · [features.md](features.md) (feature status)
