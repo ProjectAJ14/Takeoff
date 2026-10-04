@@ -19,7 +19,9 @@ project you can keep editing.
 
 [docs/features.md](docs/features.md) shows each feature's status, including
 what is partial or unavailable. [docs/release-gates.md](docs/release-gates.md)
-shows what is still missing before a release.
+shows what is still missing before a release. With **Hard maximum** on, a final
+export never runs longer than the target: if your locked speech cannot fit, you
+get a longer draft with the conflict stated, and final export refuses it.
 
 ## Install
 

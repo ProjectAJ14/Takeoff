@@ -426,8 +426,13 @@ From `ponytail:` comments in the source and from what no surface calls yet:
 - Only the brief's mood words reach the director (for the music pick).
 - `recover()` on open assumes one process per project.
 - No upload imports.
-- The compiler marks `locked_duration_conflict` (an over-length hard-max
-  draft) as export-blocking, but `exportProject` does not check it.
+
+## Hard maximum at export
+
+A final export (`profile: 'final_1080'`) of a plan carrying an export-blocking
+warning (`isExportBlocking`, today `locked_duration_conflict`) fails with
+`duration_conflict` before rendering and writes nothing. A draft export of the
+same plan still succeeds and lists the conflict in `unresolvedWarnings`.
 
 ## Checks
 

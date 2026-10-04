@@ -103,3 +103,24 @@ test('stems: several segments and events map each to its own ffmpeg input (regre
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('F14: a final export refuses a draft whose locked speech exceeds the hard maximum', async () => {
+  const f = await fixture();
+  try {
+    await pipeline(f, 'export-conflict');
+    const head = f.engine.getPlan()!;
+    const plan = structuredClone(head.plan);
+    plan.output.lengthPolicy = 'hard_max';
+    plan.output.targetFrames = 1;
+    for (const s of plan.segments) s.locked = true;
+    f.engine.store.commitPlan(plan, head.revision, 'user');
+    const dest = join(f.root, '..', 'out-conflict');
+    await mkdir(dest);
+    const r = await f.engine.exportProject({ profile: 'final_1080', destinationDir: dest, burnCaptions: true });
+    assert.equal(r.job.state, 'failed');
+    assert.equal(r.error?.code, 'duration_conflict');
+    assert.deepEqual(await readdir(dest), []);
+  } finally {
+    await f.cleanup();
+  }
+});

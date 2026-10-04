@@ -26,7 +26,7 @@ import {
   type Transcript,
   type Warning,
 } from '@takeoff/contracts';
-import { COMPILER_VERSION, PatchError, applyPatch, compile, validatePlan, type PlanContext } from '@takeoff/compiler';
+import { COMPILER_VERSION, PatchError, applyPatch, compile, isExportBlocking, validatePlan, type PlanContext } from '@takeoff/compiler';
 import {
   ExternalDirector,
   OllamaDirector,
@@ -1305,6 +1305,9 @@ export class Engine {
     const { revision, dest, burnCaptions, profile } = st.opts as { revision: number; dest: string; burnCaptions: boolean; profile: 'draft' | 'final' };
     const base = `exports/${st.jobId}`;
     const { plan: prePlan, compiled: pre } = this.#compiledFor(revision, burnCaptions);
+    // PRD F14: a draft may run long with an explicit conflict; a final export must never look compliant.
+    const blocking = profile === 'final' ? pre.warnings.find((w) => isExportBlocking(w)) : undefined;
+    if (blocking) throw new EngineError('duration_conflict', blocking.message, 'Raise the target length, turn off Hard maximum, or unlock speech so the edit fits.');
     // Final video + stems + bundle, roughly 3x the draft budget.
     await this.#preflight((pre.totalFrames * pre.fps.den) / pre.fps.num, 3 * DRAFT_BYTES_PER_SEC);
     // A final render of exactly this plan (e.g. from `takeoff render --final`) is reused once its bytes verify.

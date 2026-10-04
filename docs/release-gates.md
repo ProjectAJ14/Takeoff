@@ -22,11 +22,3 @@ Status words: **met**, **partially met**, **not met**, **not done**.
 | Licensing | Exact shipped dependencies, models, fonts, media and binaries inventoried with notices | Partially met | [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | Rows marked **verify** are unconfirmed, including the GPL `libx264`/`libx265` libraries inside the PyAV and OpenCV wheels. The final inventory depends on what a package ships |
 | User value | Pilot: ≥ 80% acceptable drafts with ≤ 5 corrective actions | Not met | — | Not run: needs a real pilot with real recordings |
 | Packaging | (PRD §17 deliverable, needed to ship) | Not done | — | Distribution and license decision pending (PRD §23): no installer, signing or update channel |
-
-## Known issue that affects a gate
-
-- **F14 hard maximum.** When the opening and closing speech alone exceed a hard
-  maximum, the plan is a longer draft with a `locked_duration_conflict` warning.
-  The compiler's `isExportBlocking` marks it as blocking final export, but
-  `Engine.exportProject` does not call it, so such a draft exports with the
-  warning listed in `unresolvedWarnings`.
