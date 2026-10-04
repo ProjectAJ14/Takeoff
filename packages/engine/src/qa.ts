@@ -24,6 +24,8 @@ export interface OverlayReport {
   undeclaredRequests?: number;
   /** Fonts the overlay page could not load. */
   missingFonts?: number;
+  /** F08 face_crop samples: a confidently tracked face in rendered pixels, after crop and punch (renderer math). */
+  faces?: Array<{ frame: number; rect: Rect }>;
 }
 
 export interface QaInput {
@@ -34,6 +36,8 @@ export interface QaInput {
   width: number;
   height: number;
   overlay?: OverlayReport | null;
+  /** Why no face was tracked (face_crop is then not_run with this reason). */
+  faceNote?: string;
   /** Absolute directory for contact-sheet PNGs; omitted = contact sheet not_run. */
   framesDir?: string;
   signal?: AbortSignal;
@@ -175,7 +179,13 @@ export async function runQa(q: QaInput): Promise<QaResult> {
     if (ov.missingFonts > 0) fail('fonts', 'warning', `${ov.missingFonts} font(s) fell back to a bundled default`);
     else check('fonts', 'passed');
   } else check('fonts', 'not_run', null);
-  check('face_crop', 'not_run', 'face tracking is not implemented');
+  // F08: every sampled face (confidence ≥ 0.5) must lie inside the frame, padded by 2% for rounding: the crop keeps the face.
+  if (ov?.faces?.length) {
+    const pad = Math.ceil(q.width * 0.02);
+    const out = ov.faces.filter((f) => f.rect.x < -pad || f.rect.y < -pad || f.rect.x + f.rect.w > q.width + pad || f.rect.y + f.rect.h > q.height + pad);
+    for (const f of out) issue('face_crop', 'warning', 'the tracked face leaves the crop', { frame: f.frame });
+    check('face_crop', out.length ? 'failed' : 'passed', `${ov.faces.length} face sample(s), ${out.length} outside the crop`);
+  } else check('face_crop', 'not_run', q.faceNote ?? (ov?.faces ? 'no face was tracked with confidence ≥ 0.5' : 'the renderer reported no face measurements'));
 
   const frames: QaResult['frames'] = [];
   if (q.framesDir && v) {

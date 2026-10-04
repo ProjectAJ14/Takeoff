@@ -21,8 +21,9 @@ What refuses egress:
 | `ExternalDirector.propose` (`packages/director`) | Throws before calling its `send` when `settings.networkPolicy` is `local_only`; the engine then falls back to the rules director with no fetch |
 | `OllamaDirector`, `ollamaModels` (capabilities), `planRequest` (plain-language requests) | The host is the constant `127.0.0.1`; redirects are refused |
 | `startServer` (`packages/engine/src/server.ts`) | Listens on `127.0.0.1` only, behind a bearer token, a loopback Host check and an Origin check ([agents.md](agents.md#http-api)) |
-| `openOverlay` (`packages/renderer-browser`) | The Chromium context is `offline`; every request outside the in-memory allowlist and every WebSocket is aborted and reported as `undeclared_network`, which QA treats as critical |
-| Transcription worker | Sets `HF_HUB_OFFLINE=1` and loads models with `local_files_only=True`; only `download-model --allow-network` may reach the network |
+| `openOverlay` (`packages/renderer-browser`) | Chromium starts with its OS sandbox on (`chromiumSandbox: true`) in an `offline` context; every request outside the in-memory allowlist and every WebSocket is aborted and reported as `undeclared_network`, which QA treats as critical |
+| Transcription worker (`transcribe`, `faces`, `probe`) | `transcribe` and `probe` set `HF_HUB_OFFLINE=1` and load models with `local_files_only=True`; `faces` uses the cascade bundled in OpenCV and downloads nothing; only `download-model --allow-network` may reach the network |
+| Desktop app (`packages/app`) | The session cancels every request that is not the app itself, `blob:`, `data:` or loopback HTTP ([app.md](app.md#security-model)) |
 
 The app makes no font or CDN request: render fonts come from the installed
 `@fontsource` packages, and scene code is bundled locally.
@@ -42,10 +43,34 @@ Before the request goes out, a `provider-receipt` is recorded in the project's
 event log with the provider, data type, purpose, job, byte count, estimated cost
 and the provider's retention-policy URL.
 
-The HTTP API can set a project's provider policy
-(`POST /v1/projects/{id}/providers`), but no CLI, MCP or HTTP call selects the
-external director, the only caller of `send`. So no shipped command sends
-content to a provider.
+Only the desktop app can change a project's provider policy: its Settings
+screen calls the main process, which calls `broker.setPolicy`. The HTTP API can
+read the policy (`GET /v1/projects/{id}/providers`) but has no route to write
+it, so no API caller can grant itself egress. No CLI, MCP or HTTP call selects
+the external director either, and it is the only caller of `send`. So no shipped
+command sends content to a provider.
+
+## Network trace
+
+`packages/engine/test/egress.test.ts` traces the whole local route in process.
+It wraps every way the Node process can open a connection (`net.Socket#connect`,
+`tls.connect`, `dns.lookup` in both forms, `http`/`https` `request` and `get`,
+and `globalThis.fetch`) and records any destination that is not loopback.
+
+- A self-test proves the guard records a non-loopback attempt and ignores
+  loopback, so the trace can fail.
+- Import, the pipeline with the real browser renderer, QA and a `final_1080`
+  export in `local_only` make **zero** non-loopback attempts, QA reports
+  `undeclared_network` as passed, and every Chromium launch has
+  `chromiumSandbox: true`.
+- With the external director configured in `local_only`, the job falls back to
+  the rules director with zero key lookups, receipts or connections, and
+  `broker.send` throws `egress_denied`.
+
+Subprocesses are outside an in-process guard. The test uses a fake transcriber;
+the Python worker's own suite patches `socket.connect` and `getaddrinfo` to prove
+that `transcribe` and `faces` open no connection. FFmpeg receives only local
+paths, and Chromium's requests are audited by the renderer.
 
 ## What may download, and when
 
@@ -93,17 +118,15 @@ On other platforms the lookup fails as `credentials_unavailable`.
 
 ## Not enforced yet
 
-- **No OS-level sandbox.** FFmpeg, the Python worker, Chromium and Ollama run
-  as ordinary user processes. Local only is enforced by the code paths above,
-  not by the operating system or a firewall. A dependency that opened its own
-  connection would not be stopped.
-- **Chromium's own sandbox is off.** The renderer does not set Playwright's
-  `chromiumSandbox`, which defaults to `false`, so Chromium starts with
-  `--no-sandbox`. The isolation is the offline context, the request allowlist
-  and the absence of any Node bridge. Scenes are product code; generated scenes
-  do not exist yet.
-- **No network-denial trace.** Tests assert that the code makes no fetch in Local
-  only mode; there is no OS-level trace of the whole app.
+- **No OS-level network denial.** FFmpeg, the Python worker and Ollama run as
+  ordinary user processes, and Chromium's sandbox restricts the process, not its
+  network. Local only is enforced by the code paths above, not by the operating
+  system or a firewall. A dependency that opened its own connection would not be
+  stopped.
+- **No whole-app trace.** The network trace covers the engine's Node process;
+  each subprocess is covered by its own test, and nothing traces the desktop app
+  at OS level. On Linux the Chromium sandbox needs unprivileged user namespaces
+  (Ubuntu 24.04 blocks them by default; CI turns them on).
 - **Keys on macOS only.** There is no Windows or Linux credential store.
 - **Path checks.** Imports and destinations are checked with real paths; the
   renderer's "output is not an input" check is lexical.

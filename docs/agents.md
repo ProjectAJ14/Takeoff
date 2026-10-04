@@ -31,13 +31,14 @@ loads the TypeScript directly; there is no build step.
 ```text
 takeoff 0.1.0
   init <dir> [--name N] [--toggles JSON] [--target S|auto]
-  import <dir> <files...> [--pool takes|broll|music|sfx]
+  import <dir> <files...> [--pool takes|broll|music|sfx] [--tags 'server,network']
+  brand <dir> <profile.json> [--logo logo.png] [--font 'Family=file.woff2']...
   transcribe <dir> [--glossary 'REST,Dio']
   edit <dir> [--toggles JSON] [--target S|auto] [--policy hard_max|soft_target] [--glossary 'REST,Dio'] [--director rules|ollama:<model>] [--director-timeout S]
   plan <dir>
   validate <plan.json> [--project dir]
   patch <dir> <patch.json>
-  render <dir> [--final]
+  render <dir> [--final]   (--final records a final render that export then reuses)
   qa <dir>
   export <dir> <dest> [--profile final_1080|draft_720] [--no-captions]
   capabilities
@@ -51,13 +52,14 @@ Global: --json (errors as JSON on stderr)
 | Command | Does |
 |---|---|
 | `init` | Creates a project. `--name` defaults to `Untitled`. `--toggles` and `--target` store edit defaults |
-| `import` | Imports files into a pool (default `takes`). Prints `{items}` with an `assetId` or `error` per file |
+| `import` | Imports files into a pool (default `takes`). `--tags` sets the same comma-separated tags on every imported file (B-roll subjects, music moods). Prints `{items}` with an `assetId` or `error` per file |
+| `brand` | Saves `profile.json` (a `brand-profile`; its `version` is ignored) as the next version in the app's brand library, copies `--logo` (PNG/JPEG) and each `--font` file into the library by hash, stores that version in the project and, when the project has edit defaults, selects it for the next `edit`. `--font 'Family=file'` sets the caption and heading font. Prints `{ref, version}` |
 | `transcribe` | Prepare + Transcribe |
 | `edit` | Merges `--toggles` (a JSON object of `settings` fields) and `--target` into the stored defaults, then runs the full pipeline. The first `edit` or `init` must set every toggle. `--target` is `auto` or 10–180 seconds; with a target, `--policy` defaults to `soft_target`. `--glossary` sets ASR terms (part of the transcript cache key). `--director-timeout` is 1–600 s |
 | `plan` | Prints the head plan with its `revision` and `planHash` |
 | `validate` | Schema check; with `--project`, semantic checks too. Exits 1 when invalid |
 | `patch` | Applies a patch file; prints `{revision, planHash}` |
-| `render` | Re-renders the head as a draft and runs QA. `--final` runs a `final_1080` export into `<dir>/exports` |
+| `render` | Re-renders the head as a draft and runs QA. `--final` renders it at 1080×1920 instead, records it, and runs QA; a later `export` of the same plan reuses that render |
 | `qa` | Same as `render` without `--final` |
 | `export` | Exports to `<dest>` (`final_1080` by default). `--no-captions` leaves captions out of the video |
 | `capabilities` | Prints the `capabilities` DTO |
@@ -89,7 +91,7 @@ calls wait for the job to finish.
 
 | Tool | Required inputs | Optional inputs | Returns |
 |---|---|---|---|
-| `inspect_project` | `project` | — | Project, assets with pools, transcript words, plan with `revision` and `planHash`, revisions, latest job, artifacts, edit defaults |
+| `inspect_project` | `project` | — | Project, assets with pools, original names and tags, transcript words, plan with `revision` and `planHash`, revisions, latest job, artifacts, edit defaults, up to three `hookOptions` and the project's brands (`id`, `version`, `name`) |
 | `import_assets` | `project`, `paths` (1–100), `pool` | — | `{items}` |
 | `transcribe` | `project` | `idempotencyKey` | `{job, error, revision, warnings, qa}` |
 | `propose_edit` | `project`, `baseRevision` | `settings`, `targetSeconds` (10–180 or `null`), `lengthPolicy`, `idempotencyKey` | Same as `transcribe` |
@@ -128,8 +130,8 @@ DTOs are validated with the contracts schemas; other bodies are checked by hand.
 Errors are `{code, message, remedy}`. Status codes: 400 for `invalid_*` codes,
 403 for `path_not_approved`, `egress_denied` and `network_denied`, 404 for
 `not_found`, `revision_not_found`, `brand_not_found`, unknown routes, and
-`no_plan` from `GET /plan` and `/qa`, 409 for `stale_revision`, `locked_object`, `project_exists`
-and nothing to undo/redo, 503 for `renderer_unavailable` and `director_unavailable`, 500 for `internal`,
+`no_plan` from `GET /plan` and `/qa`, 409 for `stale_revision`, `locked_object`, `project_exists`,
+`brand_version_exists` and nothing to undo/redo, 503 for `renderer_unavailable` and `director_unavailable`, 500 for `internal`,
 and 422 for other codes. Responses are `Cache-Control: no-store`.
 
 | Method and path | Body | Reply |
@@ -141,9 +143,12 @@ and 422 for other codes. Responses are `Cache-Control: no-store`.
 | `GET /v1/projects/{id}` | — | 200 project snapshot (as `inspect_project`) |
 | `POST /v1/projects/{id}/assets[?pool=…]` | `import-assets-request`, `path` items only (`upload_unsupported` otherwise) | 200 `{items}`; imports run before the reply |
 | `POST /v1/projects/{id}/edit-defaults` | Any of `settings` (merged), `targetSeconds`, `lengthPolicy`, `takes`, `brandProfileId`, `brief`, `captionTemplate`, `zoomMaxScale`; other fields are refused | 200 `{editDefaults}` (see [Edit defaults](#edit-defaults)) |
-| `POST /v1/projects/{id}/brands` | `brand-profile` | 201 `{ref}`: the saved `brands/<id>-v<n>.json` |
-| `GET /v1/projects/{id}/providers` | — | 200 `{policy}`: the project's provider policy |
-| `POST /v1/projects/{id}/providers` | `{networkPolicy, approvals}` | 200 `{policy}` after validation ([privacy.md](privacy.md#approved-providers)) |
+| `POST /v1/projects/{id}/brands` | A `brand-profile`, or `{brandId, version?}` to copy a library brand (latest version by default) | 201 `{ref}`: `brands/<id>@<version>`, the stored version ([engine.md](engine.md#brands)) |
+| `PATCH /v1/projects/{id}/assets/{assetId}` | `{tags}`: at most 20 tags of 1–32 letters, digits, spaces, `_` or `-` | 200 `{assetId, tags}` (lower-cased, unique) |
+| `GET /v1/projects/{id}/providers` | — | 200 `{policy}`: the project's provider policy. There is no write route ([privacy.md](privacy.md#approved-providers)) |
+| `GET /v1/brands` | — | 200 `{brands}`: the latest version of each brand in the app library |
+| `POST /v1/brands` | `brand-profile` (its `version` is ignored) | 201 `{brand}`: saved as the next version; its font and logo ids must already be in the library |
+| `POST /v1/brand-files` | `{path, kind: "font" \| "logo"}`, a path under an approved folder | 201 `{assetId, sha256}`: the file copied into the library, id `bf_<sha256>` |
 | `POST /v1/projects/{id}/requests` | `{text, baseRevision}` | 200 `{revision, planHash, intents, ops}`: a plain-language request applied as a patch (see [Plain-language requests](#plain-language-requests)) |
 | `POST /v1/projects/{id}/jobs` | `create-job-request` | 202 job. `Prepare` (draft only) runs Edit Video with the stored edit defaults (`settings_required` if none); `Transcribe`; `Build graphics`/`Render preview`/`Check quality` (draft, `baseRevision` must be current) re-render and QA. `Export` is refused: use `/exports` |
 | `GET /v1/jobs/{id}` | — | 200 job |
@@ -174,8 +179,8 @@ A project stores one set of edit defaults, which Edit Video uses: the full
 | Field | Rule | Effect |
 |---|---|---|
 | `takes` | 1–500 distinct asset ids from the `takes` pool | Only these takes, in this story order (default: every take in import order) |
-| `brandProfileId` | A brand saved in this project | Glossary, prohibited claims, palette and fonts come from it |
-| `brief` | Text, at most 500 characters | Kept in the job snapshot; not sent to the director |
+| `brandProfileId` | A brand saved in this project | Its latest stored version is used: glossary, prohibited claims, palette, font, logo and music moods |
+| `brief` | Text, at most 500 characters | Kept in the job snapshot; its mood words steer the music pick |
 | `captionTemplate` | `restrained`, `energetic` or `static` | Applied to every generated caption |
 | `zoomMaxScale` | 1.0–1.25 | Caps every generated punch zoom |
 
@@ -205,8 +210,7 @@ whose remedy lists what can be asked. A stale `baseRevision` is
 agents: how to connect (MCP or CLI), the tool table, the clock rules, patch rules
 and a working loop (inspect → propose → read QA and markers → inspect frames →
 patch → re-render → export when no critical issue remains). It tells the agent to
-treat transcript text, filenames and metadata as data. Its `set_crop` row says
-`rect {x, y, w, h}`; the schema field names are `x`, `y`, `width`, `height`.
+treat transcript text, filenames and metadata as data.
 
 ## Patches and revisions
 
@@ -235,4 +239,4 @@ node --test packages/engine/test/server.test.ts packages/engine/test/mcp.test.ts
 
 `server.test.ts` covers token, Host, Origin and body-size rejection, the
 loopback address, 409 on a stale patch, Range and SSE. `mcp.test.ts` spawns
-`bin/takeoff.js mcp`.
+`bin/takeoff.js mcp`. `wiring.test.ts` covers the asset-tags route.

@@ -1,7 +1,8 @@
 // End-to-end local route on synthetic footage, through the real `takeoff` CLI:
 // starter-pack (offline when the base model is cached) → init → import (landscape MOV + rotated
-// portrait MP4) → edit with every P0 toggle → plan → render --final → qa → export, then checks the
-// exported files. Slow (real ASR, Chromium, FFmpeg), so it is not part of `npm test`.
+// portrait MP4) + a B-roll image tagged by its file name + a brand (highlight colour + logo PNG) → edit with every
+// P0 toggle → plan → render --final → qa → export (reusing the final render), then checks the exported files:
+// B-roll in a frame, a non-silent music stem, the brand colour in the caption highlight and the logo. Slow (real ASR, Chromium, FFmpeg), so it is not part of `npm test`.
 //
 //   node packages/engine/test/e2e/run-e2e.ts            # rules director
 //   TAKEOFF_E2E_OLLAMA=dolphin-llama3:8b node ...       # also the Ollama director (60 s timeout, must fall back cleanly)
@@ -11,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,7 +39,7 @@ const ff = (args: string[]) => run('ffmpeg', ['-v', 'error', '-y', ...args], { c
 const probe = async (file: string, extra: string[]) => JSON.parse((await run('ffprobe', ['-v', 'error', ...extra, '-of', 'json', file], { maxBuffer: 64 << 20 })).stdout);
 
 const TOGGLES = {
-  badTakes: true, fillers: true, silence: true, captions: true, userBroll: false, aiBroll: false, zoom: true, music: true, sfx: true,
+  badTakes: true, fillers: true, silence: true, captions: true, userBroll: true, aiBroll: false, zoom: true, music: true, sfx: true,
   studioVoice: true, autoColor: true, textHook: true, motionGraphics: true, networkPolicy: 'local_only', fillerStrength: 'normal',
 };
 
@@ -62,17 +63,38 @@ try {
   const pack = await takeoff('starter-pack');
   assert.ok(pack.library.some((e: any) => e.kind === 'music') && pack.library.some((e: any) => e.kind === 'sfx'), 'library generated');
   const proj = join(dir, 'proj');
-  await takeoff('init', proj, '--name', 'E2E');
+  await takeoff('init', proj, '--name', 'E2E', '--toggles', JSON.stringify(TOGGLES));
   step('import');
   const imp = await takeoff('import', proj, ...sources);
   assert.ok(imp.items.every((i: any) => i.assetId && !i.error), JSON.stringify(imp));
+  // B-roll: a solid magenta image whose file name is its tag ("how Flutter talks to a server").
+  await ff(['-f', 'lavfi', '-i', 'color=c=0xFF00FF:s=640x360', '-frames:v', '1', 'server.png']);
+  const br = await takeoff('import', proj, join(dir, 'server.png'), '--pool', 'broll');
+  assert.ok(br.items[0].assetId, JSON.stringify(br));
+  // Brand: an odd highlight colour (not in testsrc2) and a cyan 5:2 logo.
+  const HIGHLIGHT = [0x13, 0xf0, 0xa7];
+  await ff(['-f', 'lavfi', '-i', 'color=c=0x00FFFF:s=500x200', '-frames:v', '1', 'logo.png']);
+  const brandFile = join(dir, 'brand.json');
+  writeFileSync(brandFile, JSON.stringify({
+    schemaVersion: '1.0', id: 'e2e', version: 1, name: 'E2E brand',
+    palette: [{ role: 'highlight', color: '#13F0A7' }, { role: 'text', color: '#FFFFFF' }],
+    fonts: [], logos: [], captionStyle: { template: 'restrained', highlightColor: '#13F0A7', positionPolicy: 'safe_bottom' },
+    hookTone: 'plain', glossary: ['GraphQL'], prohibitedClaims: ['fastest'], motionIntensity: 'restrained', safeLayouts: ['full', 'inset'],
+    music: { moods: ['calm'], bannedCategories: [] }, sfx: { bannedCategories: [] }, ctaTemplates: [], aspectPresets: [{ width: 1080, height: 1920 }],
+    provenance: { source: 'manual', sourceUrl: null, createdAt: '2026-10-05T12:00:00Z' },
+  }));
+  step('brand (colour + logo)');
+  const brand = await takeoff('brand', proj, brandFile, '--logo', join(dir, 'logo.png'));
+  assert.equal(brand.ref, 'brands/e2e@1');
   step('edit (all P0 toggles, rules director)');
   const edit = await takeoff('edit', proj, '--toggles', JSON.stringify(TOGGLES), '--target', 'auto', '--glossary', 'REST,GraphQL,Flutter,Dio');
   assert.equal(edit.job.state, 'succeeded', JSON.stringify(edit.error));
   const { plan } = await takeoff('plan', proj);
+  assert.equal(plan.brandProfileRef, 'brands/e2e@1');
   step('render --final, qa, export');
   const final = await takeoff('render', proj, '--final');
   assert.equal(final.job.state, 'succeeded', JSON.stringify(final.error));
+  assert.ok(final.job.artifacts.some((a: any) => a.kind === 'render_final'), 'render --final records a final render');
   const qa = await takeoff('qa', proj);
   assert.equal(qa.job.state, 'succeeded', JSON.stringify(qa.error));
   const dest = join(dir, 'dest');
@@ -80,6 +102,7 @@ try {
   const exp = await takeoff('export', proj, dest);
   assert.equal(exp.job.state, 'succeeded', JSON.stringify(exp.error));
   const out = exp.dir as string;
+  assert.ok(!exp.job.artifacts.some((a: any) => a.kind === 'render_final'), 'export reused the final render instead of rendering again');
   const frames = exp.manifest.durationFrames as number;
   const status = Object.fromEntries(exp.qa.checks.map((c: any) => [c.name, c.status]));
   for (const c of ['decode', 'duration_frames', 'dimensions', 'frame_rate', 'color_tags', 'audio_samples', 'loudness', 'true_peak', 'caption_bounds', 'visual_render', 'undeclared_network', 'fonts']) {
@@ -130,12 +153,18 @@ try {
   assert.ok(cmp && cmp.params.items.map(norm).join('|') === 'rest|graphql', `comparison items ${JSON.stringify(cmp?.params)}`);
   assert.ok(plan.visuals.some((x: any) => x.kind === 'hook_text') && plan.transforms.some((x: any) => x.kind === 'punch'), 'hook and zoom');
   assert.ok(plan.audio.music && plan.audio.sfx.length > 0, 'music and sfx');
+  const brollV = plan.visuals.find((x: any) => x.kind === 'broll');
+  assert.ok(brollV && brollV.assetId === br.items[0].assetId && brollV.layout === 'inset', `B-roll placed: ${JSON.stringify(plan.visuals.map((x: any) => x.kind))}`);
 
   // ---- stems, sources ----
   for (const s of ['dialogue', 'music', 'sfx']) {
     const st = (await probe(join(out, 'stems', `${s}.wav`), ['-show_streams'])).streams[0];
     assert.equal(Number(st.duration_ts), exp.manifest.durationFrames * 1600, `${s} stem samples`);
   }
+  const vd = await run('ffmpeg', ['-hide_banner', '-nostats', '-i', join(out, 'stems', 'music.wav'), '-af', 'volumedetect', '-f', 'null', '-'], { maxBuffer: 64 << 20 });
+  const musicMax = Number(/max_volume: (-?[\d.]+) dB/.exec(vd.stderr)![1]);
+  // The calm library bed peaks near -33 dBFS and plays at -18 dB: about -51 dB. Digital silence reads -91 dB or -inf.
+  assert.ok(musicMax > -70, `music stem is not silent (max ${musicMax} dB)`);
   assert.deepEqual(sources.map(sha), before, 'source media unchanged');
   for (const m of readdirSync(join(proj, 'media', 'originals'))) assert.ok(m.startsWith(sha(join(proj, 'media', 'originals', m))), 'original copy intact');
 
@@ -152,6 +181,37 @@ try {
     pngs.push(f);
   }
   step(`frames: ${pngs.join(' ')}`);
+
+  // ---- pixels: B-roll inset, caption highlight in the brand colour, logo ----
+  const rgbAt = async (n: number, name: string) => {
+    const f = join(dir, `${name}-${n}.png`);
+    await ff(['-i', join(out, 'video.mp4'), '-vf', `select=eq(n\\,${n})`, '-frames:v', '1', f]);
+    pngs.push(f);
+    return (await run('ffmpeg', ['-v', 'error', '-i', f, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { encoding: 'buffer', maxBuffer: 64 << 20 })).stdout as Buffer;
+  };
+  const near = (px: Buffer, i: number, c: number[], tol: number) => Math.abs(px[i]! - c[0]!) <= tol && Math.abs(px[i + 1]! - c[1]!) <= tol && Math.abs(px[i + 2]! - c[2]!) <= tol;
+  const countPx = (px: Buffer, box: { x: number; y: number; w: number; h: number }, c: number[], tol: number) => {
+    let n = 0;
+    for (let y = box.y; y < box.y + box.h; y++) for (let x = box.x; x < box.x + box.w; x++) if (near(px, (y * 1080 + x) * 3, c, tol)) n++;
+    return n;
+  };
+  const bv = at(brollV.id);
+  const brollPx = await rgbAt(Math.floor((bv.startFrame + bv.endFrame) / 2), 'broll');
+  // Inset box: 70% x 30% of the frame, centred, at the top of the safe area.
+  assert.ok(countPx(brollPx, { x: 300, y: 300, w: 480, h: 200 }, [255, 0, 255], 40) > 0.9 * 480 * 200, 'B-roll inset visible');
+  let green = 0;
+  for (const c of tl.captions.slice(0, 6)) {
+    // Mid-caption (past the fade-in), where an emphasis or active word carries the highlight.
+    const px = await rgbAt(Math.floor((c.startFrame + c.endFrame) / 2), 'caption');
+    green = Math.max(green, countPx(px, { x: 0, y: 1300, w: 1080, h: 500 }, HIGHLIGHT, 40));
+    if (green > 300) break;
+  }
+  assert.ok(green > 300, `caption highlight pixels in the brand colour: ${green}`);
+  // Logo: 5:2 PNG in a 216x115 box → 216x86 at the safe area's top-right (x 735–951, y 231–317), drawn over the
+  // magenta B-roll here, so cyan there is the logo, not the test pattern; just below it is B-roll again.
+  assert.ok(countPx(brollPx, { x: 740, y: 236, w: 205, h: 76 }, [0, 255, 255], 30) > 0.95 * 205 * 76, 'logo in the top-right safe corner');
+  assert.ok(countPx(brollPx, { x: 740, y: 330, w: 170, h: 40 }, [0, 255, 255], 30) === 0, 'logo keeps its 5:2 aspect');
+  step(`pixel frames: ${pngs.slice(-2).join(' ')}`);
 
   // ---- optional: Ollama director, bounded, falls back to rules on invalid output ----
   const model = process.env.TAKEOFF_E2E_OLLAMA;

@@ -1,5 +1,6 @@
-// Drives the real Electron app end to end on synthetic speech: first run → create project → import → text hook
-// and motion graphics on → Edit Video → stages → review (play, restore, undo, caption edit, lock) → export,
+// Drives the real Electron app end to end on synthetic speech: first run (brand with colour + logo) → create project →
+// import → B-roll with tags, filler dictionary, text hook, own B-roll and motion graphics on → Edit Video → stages →
+// review (play, restore, undo, choose a hook option, caption edit, lock) → export,
 // then checks the exported MP4 with ffprobe. Screenshots every screen at 1440/1200/900 px and at 200% zoom
 // in both grounds, checks for horizontal overflow, runs a keyboard-only pass on the create screen and
 // records every request the app's session sees (no non-loopback request is allowed).
@@ -46,6 +47,8 @@ try {
     '[0:a]aresample=48000[a0];[2:a]aresample=48000[a2];[a0][1:a][a2]concat=n=3:v=0:a=1[o]', '-map', '[o]', '-ac', '1', 'speech.wav']);
   await ff(['-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30', '-i', 'speech.wav', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', 'take1.mov']);
   const take = join(dir, 'take1.mov');
+  await ff(['-f', 'lavfi', '-i', 'color=c=0xFF00FF:s=640x360', '-frames:v', '1', 'server.png']);
+  await ff(['-f', 'lavfi', '-i', 'color=c=0x00FFFF:s=500x200', '-frames:v', '1', 'logo.png']);
   const projects = join(dir, 'projects');
   const dest = join(dir, 'dest');
   await mkdir(projects);
@@ -129,8 +132,18 @@ try {
   await pick(projects);
   await page.getByRole('button', { name: 'Choose project folder' }).click();
   await page.getByText(projects).first().waitFor();
+  step('first run: brand (engine library, not localStorage)');
+  await page.getByLabel('Brand name').fill('UI Brand');
+  await page.getByLabel('Highlight').fill('#13f0a7');
+  await page.getByLabel(/Prohibited claims/).fill('fastest');
+  await pick(join(dir, 'logo.png'));
+  await page.getByRole('button', { name: 'Choose logo' }).click();
+  await page.getByText('logo.png').waitFor();
+  await page.getByRole('button', { name: 'Save brand' }).click();
+  await page.getByText('Saved UI Brand, version 1.').waitFor();
+  assert.equal(await page.evaluate(() => Object.keys(localStorage).filter((k) => k === 'takeoff.brand').length), 0, 'no brand draft in localStorage');
   await shoot('1-first-run');
-  await page.getByRole('button', { name: 'Continue' }).click(); // brand profile skipped
+  await page.getByRole('button', { name: 'Continue' }).click();
 
   // ---- create ----
   step('create: import footage');
@@ -139,6 +152,21 @@ try {
   await page.getByRole('button', { name: 'Add files' }).first().click();
   await page.locator('.footage__status', { hasText: 'Ready' }).waitFor({ timeout: 120_000 });
   await page.locator('.footage__thumb img').waitFor({ timeout: 60_000 }).catch(() => problems.push('create: no thumbnail on the footage card'));
+
+  step('create: B-roll with tags, filler dictionary, brand');
+  await pick(join(dir, 'server.png'));
+  await page.getByRole('button', { name: 'Add files' }).nth(1).click();
+  const brollCard = page.locator('.footage', { hasText: 'server.png' });
+  await brollCard.locator('.footage__status', { hasText: 'Ready' }).waitFor({ timeout: 120_000 });
+  // A typed tag that is spoken mid-sentence ("REST uses many endpoints, ..."), where a B-roll has room.
+  await brollCard.getByLabel(/Tags/).fill('network, endpoints');
+  const [tagRes] = await Promise.all([page.waitForResponse((x) => x.request().method() === 'PATCH' && /\/assets\//.test(x.url())), brollCard.getByRole('button', { name: 'Save tags' }).click()]);
+  assert.equal(tagRes.status(), 200, 'tags saved through PATCH /v1/projects/{id}/assets/{assetId}');
+  await page.getByRole('switch', { name: 'Own B-roll' }).click();
+  await page.getByRole('button', { name: 'Fillers settings' }).click();
+  await page.getByLabel(/Always cut/).fill('really');
+  await page.getByLabel(/Always keep/).focus(); // blur commits the list
+  assert.match(String(await page.getByLabel('Brand').inputValue()), /^ui-brand-/, 'the saved brand is selected');
 
   step('create: keyboard-only pass');
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -205,6 +233,17 @@ try {
   await page.waitForFunction((r) => document.querySelector('.toolbar .mono')?.textContent !== r, rev1);
   assert.equal(await cuts.count(), nCuts, 'undo brings the cut back');
 
+  step('review: choose a hook option');
+  const opts = page.getByRole('radio', { name: /^\d\. / });
+  const nOpts = await opts.count();
+  assert.ok(nOpts >= 1 && nOpts <= 3, `hook options: ${nOpts}`);
+  await opts.last().check();
+  const chosen = (await opts.last().evaluate((el) => el.parentElement!.textContent ?? '')).replace(/^\s*\d\.\s*/, '').trim();
+  const rh = await revText();
+  await page.getByRole('button', { name: 'Save hook' }).click();
+  await page.waitForFunction((x) => document.querySelector('.toolbar .mono')?.textContent !== x, rh);
+  assert.equal(await page.getByLabel('Text hook (edit freely)').inputValue(), chosen);
+
   step('review: caption edit and lock');
   await page.locator('.timeline-wrap > summary').click();
   const capClip = page.getByRole('button', { name: /^Captions: / }).first();
@@ -251,6 +290,19 @@ try {
   assert.deepEqual([au.codec_name, Number(au.sample_rate)], ['aac', 48000]);
   assert.ok(Number(p.format.duration) > 3, `duration ${p.format.duration}`);
   await dlg.getByRole('button', { name: 'Close' }).click();
+
+  step('plan: brand version, B-roll, filler dictionary');
+  {
+    const { apiBase, token } = await page.evaluate(() => ({ apiBase: window.takeoff!.apiBase, token: window.takeoff!.token }));
+    const h = { Authorization: `Bearer ${token}` };
+    const pid = ((await (await fetch(`${apiBase}/v1/projects`, { headers: h })).json()) as { projects: Array<{ id: string }> }).projects[0]!.id;
+    const snap = (await (await fetch(`${apiBase}/v1/projects/${pid}`, { headers: h })).json()) as { plan: { plan: any }; assets: Array<{ tags: string[]; pool: string }> };
+    const plan = snap.plan.plan;
+    assert.match(plan.brandProfileRef, /^brands\/ui-brand-[a-z0-9-]+@1$/);
+    assert.deepEqual(snap.assets.find((x) => x.pool === 'broll')!.tags, ['network', 'endpoints']);
+    assert.ok(plan.visuals.some((x: any) => x.kind === 'broll'), `B-roll placed: ${plan.visuals.map((x: any) => x.kind)}`);
+    assert.deepEqual(plan.settings.fillerDictionary, { preserve: [], remove: ['really'] });
+  }
 
   step('provider approvals: IPC only, never HTTP');
   const pol = { networkPolicy: 'approved_providers', approvals: [{ provider: 'anthropic', dataTypes: ['transcript'], budgetUsd: 1 }] };

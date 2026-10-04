@@ -5,7 +5,7 @@ import {
   TOGGLES, announceDelay, availability, creatorPolish, defaultEdits, editBlocker, effectiveSettings, foldJob, lengthPolicy, move, parseTarget,
   sourceCutAt, summarize, summaryLine, timelineClips, transcriptItems,
 } from '../src/renderer/logic.ts';
-import { allowedRequest, csp, isMediaPath, isPool, testHooksEnabled } from '../src/main/policy.ts';
+import { POOLS, allowedRequest, csp, isMediaPath, isPool, testHooksEnabled } from '../src/main/policy.ts';
 
 const caps = (over: Record<string, Capabilities['features'][number]['status']> = {}): Capabilities => ({
   schemaVersion: '1.0', appVersion: '0.1.0', networkPolicy: 'local_only', models: [], devices: [], codecs: { decode: [], encode: [] }, providers: [],
@@ -145,4 +145,10 @@ test('test hooks never run in a packaged app', () => {
   assert.equal(testHooksEnabled(false, undefined, ['x']), false);
   assert.equal(testHooksEnabled(false, 'test', ['x']), true);
   assert.equal(testHooksEnabled(false, undefined, ['x', '--test']), true);
+});
+
+test('picker kinds: brand fonts and logos accept only their file types', () => {
+  assert.ok(isPool('font') && isPool('logo') && !isPool('toString'));
+  assert.deepEqual([...POOLS.font], ['woff2', 'woff', 'ttf', 'otf']);
+  assert.deepEqual([...POOLS.logo], ['png', 'jpg', 'jpeg']);
 });

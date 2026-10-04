@@ -145,3 +145,70 @@ test('silences: a gap is measured from the latest word end, never cutting into a
   const cuts = detectSilences(ws, [], { t: 6_000_000 });
   assert.deepEqual(cuts.map((c) => [c.sourceStartUs, c.sourceEndUs]), [[3_150_000, 3_750_000], [4_350_000, 6_000_000]]);
 });
+
+test('fillers: standalone "Ah," and "Mm" are candidates at every strength; the words in context are not', () => {
+  const ws = words('Ah, this is it. [500] Mm, [300] okay then. Uh, done.');
+  for (const strength of ['conservative', 'normal', 'aggressive'] as const) {
+    const f = detectFillers(ws, strength);
+    assert.deepEqual(f.map((c) => texts(ws, c.wordIds)), ['Ah,', 'Mm,', 'Uh,'], strength);
+    assert.ok(f.every((c) => c.confidenceTier === 'high'));
+  }
+  // Mid-sentence "ah", "Ah" without a comma, and "mm" glued to speech stay.
+  for (const s of ['Say ah, then stop.', 'Ah I see it.', 'It is mm good.']) assert.deepEqual(detectFillers(words(s), 'aggressive'), [], s);
+  // Still retained when alignment is uncertain.
+  assert.equal(detectFillers(words('~Ah, this is it.'))[0]!.confidenceTier, 'low');
+});
+
+test('fillers: custom dictionary — preserve always wins, remove adds candidates', () => {
+  const ws = words('This is, um, literally the best. It was, like, huge.');
+  const remove = detectFillers(ws, 'normal', { preserve: [], remove: ['Literally'] });
+  assert.deepEqual(remove.map((c) => texts(ws, c.wordIds)), ['um,', 'literally', 'like,']);
+  assert.equal(remove[1]!.confidenceTier, 'high');
+  const keep = detectFillers(ws, 'aggressive', { preserve: ['um', 'like', 'literally'], remove: ['literally'] });
+  assert.deepEqual(keep, [], 'preserve beats built-in and custom remove');
+  // Multi-word entries; a remove entry under uncertain alignment is only a review.
+  const multi = words('It is sort of ~literally done.');
+  const m = detectFillers(multi, 'normal', { preserve: [], remove: ['sort of', 'literally'] });
+  assert.deepEqual(m.map((c) => [texts(multi, c.wordIds), c.confidenceTier]), [['sort of', 'high'], ['literally', 'low']]);
+  // A remove entry naming a built-in marker keeps its grammatical guard.
+  assert.deepEqual(detectFillers(words('I like this a lot.'), 'normal', { preserve: [], remove: ['like'] }), []);
+  // detectCandidates threads the dictionary.
+  assert.ok(detectCandidates(ws, { fillerDictionary: { preserve: ['um'], remove: [] } }).every((c) => texts(ws, c.wordIds) !== 'um,'));
+});
+
+test('retakes across takes: an abandoned attempt in take 1 that take 2 says in full is a high false_start', () => {
+  const t1 = words('The secret to fast builds is, um, the secret is, uh, hmm, let me start again.', 'take_1', 0, 'a');
+  const t2 = words('The secret to fast builds is caching every step. I like this approach.', 'take_2', 0, 'b');
+  const r = detectRetakes([...t1, ...t2]);
+  assert.equal(r.length, 1);
+  assert.deepEqual([r[0]!.kind, r[0]!.confidenceTier, r[0]!.assetId], ['false_start', 'high', 'take_1']);
+  assert.deepEqual([r[0]!.sourceStartUs, r[0]!.sourceEndUs], [t1[0]!.sourceStartUs, t1.at(-1)!.sourceEndUs]);
+  // Unfinished prefix (take ends mid-sentence) also counts; a complete different ending is only a review.
+  assert.equal(detectRetakes([...words('The secret to fast builds', 'take_1', 0, 'a'), ...t2])[0]!.confidenceTier, 'high');
+  const diverge = detectRetakes([...words('The secret to fast builds is luck.', 'take_1', 0, 'a'), ...t2]);
+  assert.deepEqual([diverge[0]!.kind, diverge[0]!.confidenceTier], ['retake', 'medium']);
+  // ASR heard "to" as "2" in one take.
+  const homophone = words('The Secret 2 Fast Builds is, um, let me start again.', 'take_1', 0, 'a');
+  assert.equal(detectRetakes([...homophone, ...t2])[0]!.confidenceTier, 'high');
+});
+
+test('retakes across takes: identical sentences, short overlaps and later-to-earlier matches are not retakes', () => {
+  const t2 = words('The secret to fast builds is caching every step.', 'take_2', 0, 'b');
+  assert.deepEqual(detectRetakes([...words('The secret to fast builds is caching every step.', 'take_1', 0, 'a'), ...t2]), []);
+  assert.deepEqual(detectRetakes([...words('The secret is, let me start again.', 'take_1', 0, 'a'), ...t2]), [], 'only 2 shared words');
+  // Take order is story order: a complete earlier take is never removed for a later partial one.
+  const reversed = detectRetakes([...t2, ...words('The secret to fast builds', 'take_1', 0, 'a')]);
+  assert.ok(reversed.every((c) => c.confidenceTier !== 'high'), 'at most a review');
+});
+
+test('silences: a purposeful pause before a punchline is a review, a pause between sentences is cut', () => {
+  for (const s of ['And the answer is... [1200] nothing. Thanks.', 'And the answer is [1200] nothing. Thanks.', 'And the answer is [1200] absolutely nothing.', 'And the answer is? [1000] Nothing. Thanks.']) {
+    const ws = words(s);
+    const p = detectSilences(ws).find((c) => c.evidence.startsWith('pause'))!;
+    assert.equal(p.confidenceTier, 'medium', s);
+    assert.match(p.evidence, /purposeful/);
+  }
+  for (const s of ['So what does it cost? [1200] And the answer is nothing.', 'We store every [1200] result by its hash.']) {
+    assert.equal(detectSilences(words(s)).find((c) => c.evidence.startsWith('pause'))!.confidenceTier, 'high', s);
+  }
+});

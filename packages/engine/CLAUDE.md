@@ -11,7 +11,8 @@ It also serves the loopback HTTP API, the `takeoff` CLI and the MCP stdio server
 | Path | Contents |
 |---|---|
 | `src/engine.ts` | `Engine` (`create`/`open`, `importAssets`, `runPipeline`, `cancel`, `applyPatch`/`undo`/`redo`/`revert`, `renderAffected`, `exportProject`, `recover`, `installStarterPack`, `diagnosticBundle`), `mergeLocks`, `loadBrowserRenderer` |
-| `src/capabilities.ts` | `engineCapabilities` → contracts `capabilities` DTO plus disk/renderer/font flags |
+| `src/capabilities.ts` | `engineCapabilities` → contracts `capabilities` DTO plus disk/renderer/font flags; `chromiumPresent` (the Playwright headless shell renders launch) |
+| `src/brands.ts` | F17 brand library under `<appDataDir>/brands/<id>/v<n>.json` (`saveLibraryBrand` assigns the next version), brand files (`importBrandFile`: fonts/logos copied to `files/<sha256><ext>`, id `bf_<sha256>`, magic bytes checked, ≤ 10 MB), `BRAND_REF` |
 | `src/transcribe.ts` | `workerTranscriber()`: the Python worker over `uv run --directory workers/transcribe`, JSONL progress, typed errors |
 | `src/qa.ts` | `runQa` (decode, frames, dims, fps, pix_fmt, color tags, samples, loudness/true peak, overlay checks, contact sheet), `contactFrames` |
 | `src/export.ts` | SRT/VTT/word-timed JSON captions, dialogue/music/sfx stems |
@@ -25,8 +26,9 @@ It also serves the loopback HTTP API, the `takeoff` CLI and the MCP stdio server
 | `src/cli.ts`, `bin/takeoff.js` | `takeoff` CLI (`main`), `renderTest` (PRD §17 five-second clip) |
 | `skills/takeoff-agent/SKILL.md` | Portable agent skill: tool contract and patch ops |
 
-Project layout written by the engine: `assets/<id>.json` (manifests), `brands/<id>-v<n>.json`,
-`cache/transcripts/`, `jobs/<jobId>/<stage>.json` (checkpoints), `renders/<jobId>/`,
+Project layout written by the engine: `assets/<id>.json` (manifests), `brands/files/<sha256><ext>` (brand fonts/logos;
+profiles live in the store's `brand_profiles` table), `cache/transcripts/`, `cache/faces/`, `renders/<jobId>/<profile>-r<rev>.report.json`
+(render report), `jobs/<jobId>/<stage>.json` (checkpoints), `renders/<jobId>/`,
 `exports/<jobId>/`. Asset pool and source start time are store settings `asset:<id>`.
 
 ## Invariants
@@ -91,6 +93,27 @@ Project layout written by the engine: `assets/<id>.json` (manifests), `brands/<i
 - Edit defaults may also carry `takes` (selected takes in story order), `brandProfileId`, `brief`,
   `captionTemplate` (applied to every generated caption) and `zoomMaxScale` (caps punch scales); both
   are applied before `mergeLocks`, so locked objects keep their values. `null` clears a field.
+- Faces (F06/F08): Prepare runs the worker's `faces` command per video take (`Transcriber.faces`, optional), cached as
+  store setting `faces:<contentHash>` keyed by sample fps + detector + worker versions. A missing or failing tracker never
+  fails a job: centre framing, a `face_tracking_failed` warning, and QA `face_crop` `not_run` with the reason. QA
+  `face_crop` checks the renderer's face samples (rect after crop and punch) lie inside the frame ±2%.
+- Brands (F17): versions are immutable (store `putBrandProfile`; different content under an existing version →
+  `brand_version_exists`). Plans reference `brands/<id>@<version>`; a render reads exactly that version, so a later version
+  never changes a re-render of an old plan. Each render writes a render report (frozen brand, fonts with an explicit
+  `fallback: 'Inter'` when a brand font file is missing, logo, face-tracked assets, plan hash, video sha256).
+- Prohibited claims: the Plan stage drops unlocked hooks/scene labels containing a brand-prohibited phrase and adds an
+  `unsupported_claim` marker; `#renderInput` refuses any plan that still carries one (`prohibited_claim`), so such text
+  never reaches a render.
+- Director context: `voiceAnalysis` (media `analyzeVoice`, cached `voice:<contentHash>`), B-roll (`brollTags(name,
+  tags)`; tags via `setAssetTags` / `PATCH /v1/projects/{id}/assets/{assetId}`), music/SFX candidates (own pool, else every
+  library entry imported, mood/category from tags or the library entry; brand-banned categories removed), brief + brand
+  moods, `settings.fillerDictionary` into `detectCandidates`. Hook options are stored per run (`hookOptions`) and returned
+  in the snapshot.
+- `renderFinal` (`takeoff render --final`) records a `render_final` and QA-checks it; `exportProject` reuses a final render
+  whose report has the same plan hash, profile and caption choice and whose bytes still match the recorded hash.
+- Stems come from the renderer module's `renderStems` (the mix's own buses); `writeStems` remains only for renderers
+  without it (test fakes).
+- `Workspace.open` runs `recover()` (synchronous) before any job of that process starts. ponytail: one process per project.
 - Plain-language requests: the model only picks intent names from an allowlist; it never produces ids,
   timings, text or settings. No Ollama model → `director_unavailable` (503).
 - Settings have no defaults (contracts rule): a project's edit defaults are stored once
@@ -117,10 +140,20 @@ renderer (tiny bt709 MP4 of the compiled duration). `integration.slow.test.ts`
 runs the real worker with the cached `tiny` model on `say` speech and skips
 without `say`, `uv` or the model.
 
+`wiring.test.ts` covers faces (cache, render input, face_crop), brand versions and render reports, prohibited claims,
+director context, final-render reuse, renderer stems, asset tags over HTTP and recovery on open.
+
 `test/e2e/run-e2e.ts` (slow, not in `npm test`): `node packages/engine/test/e2e/run-e2e.ts`
-runs the whole CLI route on `say` + lavfi footage (landscape MOV, rotated portrait MP4) with
-every P0 toggle, then asserts the export (1080x1920, 30 fps, h264/aac, decoded frames =
+runs the whole CLI route on `say` + lavfi footage (landscape MOV, rotated portrait MP4) plus a tagged B-roll image and a
+brand (`takeoff brand` with a highlight colour and logo PNG) with every P0 toggle, checks B-roll, logo and brand-colour
+pixels, a non-silent music stem and that export reused the `render --final` render, then asserts the export (1080x1920, 30 fps, h264/aac, decoded frames =
 compiled frames, -14 ±1 LUFS, true peak ≤ -1), captions without fillers or the false start,
 transcript-verbatim graphics labels, stem lengths and unchanged sources, and writes six PNG
 frames to inspect. `TAKEOFF_E2E_OLLAMA=<model>` adds the Ollama director and its fallback;
 `TAKEOFF_E2E_KEEP=1` keeps the temp dir.
+
+`test/e2e/hard-case-e2e.ts` (slow): two takes (an abandoned attempt in take 1, said in full in take 2), a 1.2 s beat
+before a one-word punchline, "I like this", a negation and a number, 30 s hard max. Asserts the take 1 attempt is cut or
+reviewed, negation/number/"like" verbatim in captions, no segment edge inside a word, the beat kept, flagged or dropped
+with its setup (never split from it), duration ≤ 30 s or a conflict, and no sample step at any seam of the dialogue stem
+or mix above the local signal; writes `seams.png` (frames either side of every cut) and `report.json`.

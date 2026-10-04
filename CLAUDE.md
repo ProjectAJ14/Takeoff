@@ -28,11 +28,12 @@ same shape as this file: what it owns, its invariants, its checks.
 | `packages/renderer-browser/` | Chromium/Playwright + FFmpeg renderer, sandboxed scenes | §7.4, §15 |
 | `packages/renderer-remotion/` | *(not created)* Optional renderer, behind the license decision | §7.1, §15 |
 | `packages/engine/` | Job coordinator, pipeline, QA, export, provider broker, loopback HTTP API, `takeoff` CLI, MCP server | §7.2, §8, §11, §13, §14 |
-| `packages/app/` | Electron shell and React/TypeScript UI (in progress); talks to the engine over loopback HTTP | §5 |
+| `packages/app/` | Electron shell and React/TypeScript UI; talks to the engine over loopback HTTP (`docs/app.md`) | §5 |
 | `workers/media/` | Probe, ingest, proxies, analysis; spawns FFmpeg (TypeScript, `@takeoff/media`) | F01 |
-| `workers/transcribe/` | VAD, ASR, alignment, glossary (Python) | F02 |
+| `workers/transcribe/` | VAD, ASR, alignment, glossary, face tracking (Python) | F02, F06, F08 |
 | `.claude/skills/` | Repository design and documentation-verification contracts | — |
-| `.github/` | CI, docs-sync guard, PR template | — |
+| `scripts/benchmark.ts` | PRD §12 benchmark; results in `docs/benchmarks.md` | §12 |
+| `.github/` | CI (docs-sync, test matrix on Ubuntu and macOS), PR template | — |
 
 ## Documentation is part of every feature
 

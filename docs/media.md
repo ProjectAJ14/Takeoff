@@ -5,10 +5,11 @@ Two workers read source media:
 - `workers/media` (`@takeoff/media`) is a Node/TypeScript library. It wraps
   system FFmpeg and ffprobe.
 - `workers/transcribe` is a Python command-line worker. It turns an analysis
-  WAV into a `transcript`.
+  WAV into a `transcript`, and tracks faces in a video (`faces`).
 
 The engine calls both: `ingest` on import, and the worker (through
-`uv run --directory workers/transcribe`) in the Transcribe stage. See
+`uv run --directory workers/transcribe`) in the Prepare stage (faces) and the
+Transcribe stage. See
 [engine.md](engine.md).
 
 ## Requirements
@@ -108,7 +109,8 @@ included.
 ## Transcription worker
 
 `workers/transcribe` runs Python 3.12 under `uv` and depends on faster-whisper
-(`>=1.1,<2`) and numpy. Set it up once:
+(`>=1.1,<2`), numpy and opencv-python-headless (`>=4.10,<5`; OpenCV 5 drops the
+bundled Haar cascades). Set it up once:
 
 ```sh
 cd workers/transcribe && uv sync
@@ -127,6 +129,7 @@ Run it with `uv run python -m takeoff_transcribe <command>` from
 transcribe --audio <wav> --out <json> [--model base] [--language en]
            [--glossary 'Flutter,Dio'] [--device auto|cpu|cuda]
            [--asset-id <id>] [--source-hash <sha256>]
+faces --video <path> --out <json> [--sample-fps 5] [--source-hash <sha256>]
 probe
 download-model --model <name> --allow-network
 ```
@@ -176,6 +179,39 @@ download-model --model <name> --allow-network
   (`silero_vad_v6_s300_p30`), word timestamps, and the decode options (`beam_size: 5`,
   `condition_on_previous_text: false`). The worker caches nothing.
 
+### Faces
+
+`faces` tracks the presenter's face for F06 (face-aware captions) and F08
+(face-centred crop and zoom). It runs offline: OpenCV's bundled Haar
+frontal-face cascade, no model download.
+
+- **Sampling.** FFmpeg (argument array, `file:` input) samples frames at
+  `--sample-fps` (greater than 0, at most 30; the engine uses 5), rotation
+  applied, downscaled to 480 px wide for detection. Boxes are scaled back to
+  displayed source pixels.
+- **Track.** One face in a sample gives its box; more than one is `multiple`;
+  none holds the last box for up to 1 s, then is `lost`. Face boxes are
+  median-filtered over 5 samples and move only when the centre shifts more than
+  5% of the frame or the size changes more than 10%, so entries are piecewise
+  constant and half-open. `multiple` and `lost` entries are the full frame at
+  confidence 0; face entries carry the fraction of samples that were real
+  detections.
+- **Output** (written atomically): `{schemaVersion: "1.0", width, height`
+  (displayed, rotation applied)`, rotation, sampleFps, detector, samples:
+  [{us, faces: [{x, y, w, h, score}]}], track: [{startUs, endUs, x, y, w, h,
+  confidence}], status, sourceHash?}`. `status` is `none` (no face ever),
+  `multiple_faces`, `lost` or `tracked`. The last stdout line is
+  `{"type":"result","out","status","segments"}`.
+- **Errors.** `bad_input` for a missing or undecodable video, a bad
+  `--sample-fps` or a bad `--source-hash`.
+
+The track is the renderer's `FaceTrack` as is
+([rendering.md](rendering.md#renderer-contract)). Haar cannot be fed a drawn
+face reliably, so tests cover the smoothing and the no-face path, not detection
+on a real face.
+
+### Probe and device
+
 **`probe`** prints `{"type":"capabilities","backend","models":[installed names],"devices","defaultDevice","versions"}`.
 It runs offline.
 
@@ -186,13 +222,14 @@ is `bad_input`.
 ### Offline behaviour
 
 - `transcribe` and `probe` set `HF_HUB_OFFLINE=1` before Hugging Face code is
-  imported. They load models with `local_files_only=True`.
+  imported. `faces` imports no Hugging Face code and uses the cascade file that
+  ships inside OpenCV. They load models with `local_files_only=True`.
 - A model that isn't installed returns `model_missing`. It never triggers a
   download or a cloud fallback.
 - `download-model` is the only command that may use the network, and only with
   `--allow-network`. Without that flag it returns `network_denied`.
 - The test suite patches `socket.connect` and `getaddrinfo` to prove that
-  `transcribe` opens no connection.
+  `transcribe` and `faces` open no connection.
 - Models are faster-whisper weights from the Hugging Face cache (for example
   `Systran/faster-whisper-tiny`). None ship in this repository.
 

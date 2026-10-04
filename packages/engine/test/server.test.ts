@@ -214,7 +214,7 @@ test('app routes: runtime approved roots (in-process only), edit defaults with t
       assert.deepEqual([...new Set(plan.plan.segments.map((g: { assetId: string }) => g.assetId))], [a1], 'only the selected take is used');
       assert.ok(plan.plan.captions.length && plan.plan.captions.every((c: { template: string }) => c.template === 'static'));
       assert.ok(plan.plan.transforms.every((x: { kind: string; scale?: number }) => x.kind !== 'punch' || x.scale! <= 1.1));
-      assert.equal(plan.plan.brandProfileRef, 'brands/mine-v1.json');
+      assert.equal(plan.plan.brandProfileRef, 'brands/mine@1');
 
       // Order follows the take list.
       await t.api('POST', `/v1/projects/${id}/edit-defaults`, { body: { takes: [a2, a1], captionTemplate: 'energetic' } });

@@ -27,6 +27,7 @@ const r = await e.runPipeline({ settings, targetSeconds: null, lengthPolicy: 'no
 | `projects.json` | The project registry: id → name and root |
 | `logs/engine.jsonl` | Redacted structured logs |
 | `library/` | The generated music and SFX, and their `library.json` index |
+| `brands/<id>/v<n>.json`, `brands/files/<sha256><ext>` | The brand library: one immutable file per brand version, and brand fonts and logos addressed by content hash ([Brands](#brands)) |
 | `projects/` | Projects created over HTTP without a `?root=` |
 
 **A project folder** holds `project.db` and the media folders described in
@@ -35,13 +36,14 @@ const r = await e.runPipeline({ settings, targetSeconds: null, lengthPolicy: 'no
 | Path | Contents |
 |---|---|
 | `assets/<id>.json` | Asset manifests |
-| `brands/<id>-v<n>.json` | Versioned brand profiles |
+| `brands/files/<sha256><ext>` | Font and logo files of the brands this project uses (the profiles themselves are in `project.db`) |
 | `cache/transcripts/` | Worker transcript output |
+| `cache/faces/` | Worker face tracks, one file per source and tracker version |
 | `cache/frames/` | Frames extracted for inspection |
 | `jobs/<jobId>/request.json` | The job's input snapshot |
 | `jobs/<jobId>/<stage>.json` | Stage checkpoints; `compiled-r<rev>.json` compiled timelines |
-| `renders/<jobId>/` | Draft renders `draft-r<rev>.mp4`, QA reports `qa-r<rev>.json`, contact-sheet frames |
-| `exports/<jobId>/` | Export render `video.mp4` and `export-manifest.json` |
+| `renders/<jobId>/` | Renders `draft-r<rev>.mp4` (or `final-r<rev>.mp4` from `render --final`), each with a render report `<name>.report.json`; QA reports `qa-r<rev>.json`; contact-sheet frames |
+| `exports/<jobId>/` | Export render `video.mp4` (and its render report), QA report and `export-manifest.json` |
 
 Every engine write goes through `atomicWrite`, and every project-relative path
 through `resolveUnderRoot`.
@@ -67,12 +69,12 @@ three.
 
 | Stage | What it does |
 |---|---|
-| Prepare | Needs at least one take (`no_takes`). Checks free disk for about 1 MB per second of takes, with 20% headroom (`disk_full`) |
+| Prepare | Needs at least one take (`no_takes`). Checks free disk for about 1 MB per second of takes, with 20% headroom (`disk_full`). Tracks faces in each video take and measures clipping in each take's audio (see [Faces and voice analysis](#faces-and-voice-analysis)) |
 | Transcribe | Runs the Python worker on each take with audio (see [Transcript cache](#transcript-cache)) |
-| Clean speech | Builds the `director-request`: output 1080×1920 at 30 fps, BT.709, 48 kHz; the settings and target; transcript words; candidates from `detectCandidates`; the brand's name, tone, glossary and prohibited claims. Picks a music and an sfx asset when those toggles are on |
-| Plan visuals/audio | Asks the director for a plan, validates it, merges locks and commits it as a `system` revision |
+| Clean speech | Builds the `director-request`: output 1080×1920 at 30 fps, BT.709, 48 kHz; the settings and target; transcript words; candidates from `detectCandidates` (with the filler dictionary); the brand's name, tone, glossary and prohibited claims. Gathers the director context: B-roll with tags, music and SFX candidates, clipping per take, and the brief plus the brand's music moods |
+| Plan visuals/audio | Asks the director for a plan, merges locks, removes brand-prohibited hooks and labels, validates, and commits it as a `system` revision. Stores up to three hook options for the review screen |
 | Build graphics | Compiles the plan to `jobs/<jobId>/compiled-r<rev>.json` |
-| Render preview | Renders a draft to `renders/<jobId>/draft-r<rev>.mp4` |
+| Render preview | Renders a draft to `renders/<jobId>/draft-r<rev>.mp4` (a final for `renderFinal`) and writes its render report |
 | Check quality | Runs QA and the repair loop |
 
 A run with critical QA issues left at the end fails as `qa_critical`.
@@ -81,9 +83,16 @@ A run with critical QA issues left at the end fails as `qa_critical`.
   segment per video take, with a `marker_no_speech` review marker. With no video
   either, the job fails as `no_usable_media`. Takes without speech in an
   otherwise spoken project are left out with a `no_speech` warning.
-- **Music and SFX.** The first asset in the project's `music` or `sfx` pool is
-  used. Otherwise the engine imports the first library entry of that kind, as a
-  `generated` asset carrying the library's license.
+- **Music and SFX candidates.** Every asset in the project's own `music` or
+  `sfx` pool, or, when there is none, every library entry of that kind, imported
+  as a `generated` asset carrying the library's license. A track's moods are its
+  library category, its tags and the words of its file name; an effect's
+  category (`ui_click`, `hit`, `whoosh`) comes the same way. Categories the brand
+  bans are left out. The director picks among them ([director.md](director.md#rules-director)).
+- **B-roll candidates.** Every video or image in the `broll` pool with its tags:
+  the words of its original file name plus user tags (`setAssetTags`, CLI
+  `import --tags`, HTTP `PATCH /v1/projects/{id}/assets/{assetId}`; at most 20
+  tags of 1–32 letters, digits, spaces, `_` or `-`).
 - **One heavy task at a time.** Transcription and renders are serialised within
   an engine.
 - **Target length.** `targetSeconds` is `null` (automatic) or an integer from 10
@@ -93,6 +102,53 @@ A run with critical QA issues left at the end fails as `qa_critical`.
 - **Caption style and zoom strength.** `captionTemplate` replaces the template
   of every generated caption, and `zoomMaxScale` (1.0–1.25) caps every generated
   punch zoom. Both apply before locked objects are merged back.
+
+## Faces and voice analysis
+
+- **Faces (F06/F08).** Prepare runs the worker's `faces` command on each video
+  take ([media.md](media.md#faces)), sampling 5 frames per second. The track is
+  cached as `cache/faces/…` and keyed by the source hash, sample rate, detector
+  and the worker's versions, so unchanged footage is never tracked again. The
+  renderer receives the tracks as `RenderInput.faceTracks`. Face tracking is an
+  enhancement: when the worker is missing or fails, the job continues with centre
+  framing, adds a `face_tracking_failed` warning, and QA reports `face_crop` as
+  `not_run` with the reason.
+- **Voice analysis (F11).** `analyzeVoice` measures each take's clipping ratio
+  once per content hash. The director adds a `source_clipping` marker above
+  0.1 %. A failed measurement is simply absent.
+
+## Brands
+
+A brand profile (F17) is stored in two places, and both keep every version:
+
+- **The app library**, `<app data>/brands/<id>/v<n>.json`.
+  `saveLibraryBrand` always writes the next version and never rewrites one.
+  Fonts (`.woff2`, `.woff`, `.ttf`, `.otf`) and logos (`.png`, `.jpg`) are
+  imported by `importBrandFile` from an approved path: at most 10 MB, checked by
+  magic bytes, copied to `files/<sha256><ext>`. Their id is `bf_<sha256>`, so a
+  file can never change under its id.
+- **The project**, through `saveBrandProfile`: the version goes into the
+  store's `brand_profiles` table ([projects.md](projects.md)) and its files are
+  copied into `brands/files/`. Saving different content under an existing
+  version fails as `brand_version_exists`.
+
+A plan names one version as `brandProfileRef: "brands/<id>@<version>"`, and a
+render reads exactly that version, so saving a later version never changes a
+re-render of an old plan. Edit defaults' `brandProfileId` picks the latest
+version stored in the project.
+
+At render time the engine passes the brand's font files (verified against their
+hash) and its primary logo. A brand font whose file is missing falls back to
+Inter. **Prohibited claims:** Plan visuals/audio removes any unlocked hook or
+motion-graphic label containing a phrase the brand prohibits and adds an
+`unsupported_claim` marker; a locked one makes the marker `critical`, and the
+render refuses any plan that still contains such text (`prohibited_claim`).
+
+Every render writes a **render report** next to the video
+(`<name>.report.json`): revision, plan hash, profile, whether captions were
+burned, the video's SHA-256, renderer and versions, the frozen brand profile,
+each brand font with its hash or `fallback: "Inter"`, the logo and whether it
+was drawn, and which assets had a face track.
 
 ## Jobs, cancel and resume
 
@@ -177,7 +233,7 @@ not run is never reported as passed.
 | `visual_render` | A scene's text overflowed, or the scene left the safe area | critical |
 | `undeclared_network` | A scene attempted a request outside the allowlist | critical |
 | `fonts` | A font fell back to the default | warning |
-| `face_crop` | Always `not_run`: there is no face tracking | — |
+| `face_crop` | A tracked face (confidence ≥ 0.5), sampled at the middle frame of each segment after the crop and any punch zoom, lies outside the frame by more than 2% of its width. `not_run`, with the reason, when no face was tracked | warning |
 | `contact_sheet` | A contact-sheet frame could not be extracted | warning |
 
 Digital silence makes `loudness` and `true_peak` `skipped`. The overlay checks
@@ -207,7 +263,10 @@ become job warnings.
 2. Checks free disk for about 3 MB per second of output.
 3. Renders the head revision: profile `final_1080` uses the `final` render
    profile (1080×1920), and `draft_720` the `draft` profile (540×960). With
-   `burnCaptions: false`, captions are left out of the video.
+   `burnCaptions: false`, captions are left out of the video. A final render of
+   the same plan hash and caption choice, recorded by `renderFinal` (CLI
+   `render --final`), is reused instead when its bytes still match the hash in
+   its render report.
 4. Runs full QA. **With a critical issue, nothing is written to the destination.**
 5. Writes `<destination>/takeoff-r<rev>-<jobId first 8>.partial/`, then renames
    it without `.partial`.
@@ -220,9 +279,15 @@ become job warnings.
 | `bundle/` | `plan.json`, `transcripts/<assetId>.json`, `assets/<id>.json` manifests, the caption files, `qa-report.json`, `export-manifest.json`, and `bundle.json` listing each file's SHA-256. No source media, no keys |
 | `export-manifest.json` | The contracts `export-manifest`: preset, outputs with hashes and sizes, QA checks, unresolved warnings |
 
-The stems are plain cuts, gains and placement from the 48 kHz master WAVs; they
-do not carry Studio voice, seam fades or ducking. The project also keeps the
-render and manifest under `exports/<jobId>/`.
+The stems come from the renderer's own mix buses (`renderStems`), so they carry
+the seam fades, the Studio voice chain, the music fades, gain and ducking, and
+the SFX placement, before loudness normalisation. A renderer without
+`renderStems` (the test fakes) gets plain cuts from the master WAVs instead. The
+project also keeps the render and manifest under `exports/<jobId>/`.
+
+`renderFinal()` renders the head plan with the `final` profile into
+`renders/<jobId>/final-r<rev>.mp4`, writes its render report and runs QA, so a
+later export can reuse it.
 
 ## Provider broker
 
@@ -259,8 +324,9 @@ Then:
   status or a non-JSON body is `provider_error`. There are no retries.
 
 `setPolicy` validates and stores a policy and appends a `provider_policy` event.
-The HTTP API exposes it as `POST /v1/projects/{id}/providers`; the CLI and MCP do
-not.
+Only the desktop app's main process calls it, from Settings. The HTTP API can
+read the policy (`GET /v1/projects/{id}/providers`) but not write it; the CLI and
+MCP do neither.
 
 ## Logs and diagnostics
 
@@ -284,9 +350,10 @@ folder: `versions.json` (engine, compiler, prompt, Node, platform),
 
 `engineCapabilities` builds the contracts `capabilities` DTO from what the
 machine has: FFmpeg encoders and decoders, installed ASR models (from the
-worker's `probe`), Ollama models on `127.0.0.1` (1.5 s timeout), whether the
-Playwright Chromium binary exists, bundled fonts, the installed library and free
-disk. Each feature F01–F17 is `available`, `experimental` (degraded) or
+worker's `probe`), Ollama models on `127.0.0.1` (1.5 s timeout), whether
+Playwright's Chromium headless shell (the binary renders launch) exists, bundled
+fonts, the installed library and free disk. F08 is `available` when the worker
+answers `probe`, else `experimental` (centre zooms only). Each feature F01–F17 is `available`, `experimental` (degraded) or
 `unavailable`, with a reason. [features.md](features.md) lists them.
 
 ## Starter pack
@@ -317,7 +384,16 @@ With the model already cached, the pack needs no network grant.
   longer match are dropped.
 - Every `*.partial` file or folder under the project root is deleted.
 
-No surface calls `recover()` yet.
+`Workspace.open` runs it synchronously the first time a process opens a
+project, before any job of that process can start. It assumes one process per
+project: a second live process on the same project would see its running jobs
+requeued.
+
+`packages/engine/test/recovery.test.ts` kills the real CLI during Transcribe and
+again during Render preview, and checks that a rerun finishes from the cached
+transcript with one transcript row, that no `.partial` is ever an artifact and
+that the source's hash never changes. It also cancels a hung render and fills
+the disk at export (`disk_full`, nothing written to the destination).
 
 ## `render-test`
 
@@ -344,25 +420,28 @@ From `ponytail:` comments in the source and from what no surface calls yet:
 - Finding a job by id scans every registered project.
 - The renderer's "output is not an input" check compares paths lexically; a
   symlinked or case-variant path slips through.
-- Stems lack Studio voice, seam fades and ducking.
-- The library pick takes the first entry of a kind, so music is always
-  `bed_calm` and every sfx cue (including `whoosh` cues) uses `sfx_ui_click`.
-- `recover()` is a library call only, and the external director cannot be
-  selected from any surface. Brand profiles, provider policy, diagnostics and the
-  optional edit defaults are reachable over HTTP only, not from the CLI or MCP.
-- The creative `brief` is kept in the job snapshot but not sent to the director.
-- No face tracking, no B-roll placement, no upload imports.
-- Capabilities looks for Playwright's full Chromium binary, while renders
-  launch the headless shell. With only the shell installed, capabilities reports
-  the renderer missing although renders work.
+- The external director cannot be selected from any surface. Diagnostics and
+  the optional edit defaults other than the brand are reachable over HTTP only,
+  not from the CLI or MCP.
+- Only the brief's mood words reach the director (for the music pick).
+- `recover()` on open assumes one process per project.
+- No upload imports.
+- The compiler marks `locked_duration_conflict` (an over-length hard-max
+  draft) as export-blocking, but `exportProject` does not check it.
 
 ## Checks
 
 ```sh
 node --test "packages/engine/test/**/*.test.ts"
-node packages/engine/test/e2e/run-e2e.ts      # slow; TAKEOFF_E2E_KEEP=1 keeps the temp folder
+node packages/engine/test/e2e/run-e2e.ts        # slow; TAKEOFF_E2E_KEEP=1 keeps the temp folder
+node packages/engine/test/e2e/hard-case-e2e.ts  # slow; cross-take false start, punchline pause, 30 s hard max, seams
 ```
 
 Tests use temporary projects, `lavfi` media, a fake transcriber and a fake
 renderer; `integration.slow.test.ts` runs the real worker and skips without
-`say`, `uv` or the cached `tiny` model.
+`say`, `uv` or the cached `tiny` model. `wiring.test.ts` covers face tracking,
+brand versions and render reports, prohibited claims, the director context,
+final-render reuse, renderer stems and recovery on open. `egress.test.ts` and
+`recovery.test.ts` are described in [privacy.md](privacy.md#network-trace) and
+[Recovery](#recovery); the crash part of `recovery.test.ts` skips without `say`,
+`uv` and the cached `base` model.

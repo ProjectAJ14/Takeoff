@@ -5,6 +5,7 @@ import type { ProviderDataType } from '@takeoff/contracts';
 import { api, bridge, describe } from './api.ts';
 import type { AppCtx, Ground } from './App.tsx';
 import { CapabilityPanel, StarterPack } from './FirstRun.tsx';
+import { BrandLibrary } from './Brand.tsx';
 import { ErrorNote, Label } from './ui.tsx';
 
 interface Policy {
@@ -36,6 +37,7 @@ export function Settings({ ctx, onFirstRun }: { ctx: AppCtx; onFirstRun(): void 
         </div>
         <p className="hint">The preview stays dark on both grounds so you judge your video against black.</p>
       </section>
+      <BrandLibrary ctx={ctx} />
       <Providers ctx={ctx} />
       <Diagnostics ctx={ctx} />
       <CapabilityPanel ctx={ctx} />

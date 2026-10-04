@@ -264,3 +264,27 @@ test('regression: job transitions and artifacts are validated against the contra
   assert.equal(s.getJob(j.id)?.state, 'running');
   s.close();
 });
+
+test('migration 2 upgrades a database created before it; brand versions are immutable', () => {
+  const root = tmp();
+  // A project as migration 1 left it.
+  const old = new DatabaseSync(join(root, 'project.db'));
+  old.exec('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+  old.exec(migrations[0]!);
+  old.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)').run('x');
+  old.prepare("INSERT INTO project (id, name, schema_version, created_at, updated_at) VALUES ('p1', 'Old', '1.0', 'x', 'x')").run();
+  old.close();
+  const s = openProject(root);
+  assert.equal(s.projectId, 'p1');
+  const brand = JSON.parse(readFileSync(new URL('../../contracts/fixtures/valid/brand-profile/manual.json', import.meta.url), 'utf8'));
+  s.putBrandProfile(brand);
+  s.putBrandProfile(brand); // identical: no-op
+  assert.throws(() => s.putBrandProfile({ ...brand, name: 'Changed' }), /already exists/);
+  s.putBrandProfile({ ...brand, version: brand.version + 1, name: 'V2' });
+  assert.equal(s.getBrandProfile(brand.id, brand.version)!.name, brand.name);
+  assert.equal(s.getBrandProfile(brand.id)!.name, 'V2');
+  assert.deepEqual(s.listBrandProfiles().map((b) => b.version), [brand.version + 1]);
+  assert.throws(() => s.db.exec("UPDATE brand_profiles SET json = '{}'"), /immutable/);
+  assert.throws(() => s.db.exec('DELETE FROM brand_profiles'), /immutable/);
+  s.close();
+});

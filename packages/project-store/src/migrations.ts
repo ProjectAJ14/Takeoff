@@ -73,4 +73,15 @@ export const migrations: readonly string[] = [
     value TEXT NOT NULL
   );
   `,
+  /* 2 */ `
+  CREATE TABLE brand_profiles (
+    id TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (id, version)
+  );
+  CREATE TRIGGER brand_profiles_no_update BEFORE UPDATE ON brand_profiles BEGIN SELECT RAISE(ABORT, 'brand profile versions are immutable'); END;
+  CREATE TRIGGER brand_profiles_no_delete BEFORE DELETE ON brand_profiles BEGIN SELECT RAISE(ABORT, 'brand profile versions are immutable'); END;
+  `,
 ];

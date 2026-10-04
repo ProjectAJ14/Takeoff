@@ -30,6 +30,12 @@ interface Renderer {
 - `seed`.
 - `versions`: pinned component versions, for example `compiler`, `chromium`,
   `ffmpeg`.
+- `faceTracks` (optional): a smoothed face track per video asset id,
+  `{width, height, track: [{startUs, endUs, x, y, w, h, confidence}]}` in
+  displayed source pixels. The worker's `faces` output fits as is
+  ([media.md](media.md#faces)). Absent means no face awareness.
+- `faceZoomMaxUpscale` (optional, default 1): how many output pixels per source
+  pixel a face-centred punch zoom may reach.
 
 **`RenderOptions`** are `outPath`, `profile` (`draft` \| `final`), an optional
 `signal`, and an optional `onProgress({frame, totalFrames})`. When `signal`
@@ -104,7 +110,9 @@ can be bundled into sandboxed scene pages.
 ## Browser renderer
 
 `packages/renderer-browser` exports `BrowserRenderer` (id `browser-chromium`,
-version `0.1.0`), `renderStill`, `generateLibraryAudio` and `RenderError`.
+version `0.1.0`), `renderStill`, `renderStems`, `generateLibraryAudio` and
+`RenderError`. Its input may also carry `logo: {path, hash}` (the engine passes
+the brand's primary logo).
 
 ```ts
 import { BrowserRenderer } from '@takeoff/renderer-browser';
@@ -121,8 +129,11 @@ and the Playwright Chromium headless shell.
 1. **Check the input.** `compiled` and `plan` must match their schemas,
    `planHash(plan)` must equal `compiled.planHash`, `seed` must be a uint32 and
    the timeline must have at least one frame. An `outPath` (or its
-   `.partial.mp4`) equal to any asset, proxy or font path is refused. All of
-   these fail as `invalid_input` before anything runs.
+   `.partial.mp4`) equal to any asset, proxy or font path is refused. Face
+   tracks must have integer half-open spans and boxes inside their frame, with
+   an aspect that matches the asset's displayed orientation;
+   `faceZoomMaxUpscale` must be in (0, 4]; a logo must match its SHA-256 and be
+   a PNG or JPEG. All of these fail as `invalid_input` before anything runs.
 2. **Colour (F12).** With `autoColor` on, `analyzeColor` runs once per video
    source. HDR sources (`smpte2084`, `arib-std-b67` transfer) get no correction.
 3. **Loudness pass 1 (F11).** With `studioVoice` on and a dialogue profile other
@@ -160,7 +171,9 @@ video is 540×960, not 720 wide.
 
 ### Sandbox
 
-Each render launches a fresh headless Chromium:
+Each render launches a fresh headless Chromium with its OS sandbox on
+(`chromiumSandbox: true`; Playwright's default is `--no-sandbox`). On Linux this
+needs unprivileged user namespaces.
 
 - **Context.** `offline: true`, service workers blocked, downloads off,
   viewport at the render size with device scale factor 1, `reducedMotion:
@@ -180,9 +193,9 @@ Each render launches a fresh headless Chromium:
 The scene runtime (`src/runtime.ts`) is bundled once per process by esbuild into
 an IIFE (`target: chrome120`). Its SHA-256 is recorded as `versions.sceneRuntime`.
 
-This is page-level isolation, not an OS sandbox: the renderer leaves Playwright's
-`chromiumSandbox` at its default (`false`), so Chromium runs with `--no-sandbox`.
 The scenes are product code; generated scenes do not exist.
+`packages/engine/test/egress.test.ts` asserts every launch passes
+`chromiumSandbox: true`.
 
 ### Fonts and colours
 
@@ -191,9 +204,11 @@ The scenes are product code; generated scenes do not exist.
 - **Brand fonts:** a brand profile's `caption` font (or its `body` font) and its
   `heading` font are used only when a `RenderInput.fonts` entry has the same
   family. The file must be `.woff2`, `.woff`, `.ttf` or `.otf` and match its
-  pinned SHA-256, or the render throws. The engine passes its bundled fonts
-  (Inter 400/700, Archivo 700, JetBrains Mono 400), so a brand font renders only
-  if its family is one of those.
+  pinned SHA-256, or the render throws. The engine passes the brand's own font
+  files (imported into the brand library by hash) and its bundled fonts (Inter
+  400/700, Archivo 700, JetBrains Mono 400). A brand family with no file falls
+  back to the default face, and the engine's render report records
+  `fallback: "Inter"`.
 - **Font check:** every font load is awaited before the first seek. A font that
   did not load is a `font_missing` violation.
 - **Palette:** `DEFAULT_PALETTE` is text `#FFFFFF`, highlight `#FFD23F`, accent
@@ -223,8 +238,10 @@ Per-word timing (active-word highlight) is used only while the caption's text
 still splits into as many words as it has word ids. After an edit that changes
 that, the caption shows as one block.
 
-There is no face tracking: `safe_face_aware` captions take the bottom slot, and
-`tracked_face` punch zooms zoom on the centre.
+`safe_face_aware` captions move to the top slot when the tracked face (union
+over the segments the caption spans, in render pixels before any punch)
+overlaps the bottom slot and not the top one. Without a confident face they
+take the bottom slot.
 
 **Safe-area checks.** After each seek, a caption's measured bounds must lie
 inside its `captionBox`, and a scene's inside the safe area. The first breach per
@@ -253,21 +270,36 @@ no plan or transcript string enters the graph (`test/compose.test.ts`).
   `sourceStartUs + k/fps`). It is padded by repeating the last frame and trimmed to
   exactly its compiled frame count, then all segments are concatenated and
   restamped.
+- **Face per segment.** The face-track entry that overlaps most of the
+  segment's source range. Confidence below 0.5 (several faces, or lost), or no
+  track, means no face: centre framing as before. One framing per segment; the
+  crop does not pan inside a cut.
 - **Crop.** The largest output-aspect rect inside the plan's `crop` transform
-  rect (or the whole frame), centred, as fractions of the displayed (rotated)
-  source. The FFmpeg expression also clamps `x ≤ iw-ow` and `y ≤ ih-oh`, so a
-  crop never leaves the source. Then a bicubic scale to the render size.
+  rect (or the whole frame), as fractions of the displayed (rotated) source:
+  centred on the face horizontally (clamped inside the plan crop) when there is
+  one, else centred. The FFmpeg expression also clamps `x ≤ iw-ow` and
+  `y ≤ ih-oh`, so a crop never leaves the source. Then a bicubic scale to the
+  render size.
 - **Colour (F12).** `eq` (brightness ±0.08, contrast 1–1.15, saturation 1–1.1)
   and `colorbalance` (rm/gm/bm ±0.1) with the per-source correction.
 - **Punch zoom (F08).** `zoomAt(frame)` eases in over the transform's
   `transitionFrames` with `easeInOutCubic`, then holds until the span ends. Scale
-  is capped at 1.25. Frames are grouped into runs of equal zoom; each run is a
-  centre crop by 1/zoom scaled back up (no `zoompan`).
+  is capped at 1.25. A `tracked_face` punch on a tracked face crops around the
+  face centre (clamped inside the frame), and its scale is also capped so output
+  pixels per source pixel stay at most `faceZoomMaxUpscale`; with the default 1, a
+  1080p landscape source into 1080×1920 gets no face zoom. Any other punch zooms
+  on the centre. Frames are grouped into runs of equal zoom and centre; each run
+  is a crop by 1/zoom scaled back up (no `zoompan`). Without `faceTracks` the
+  filter graph is byte-identical to a render without face support
+  (`test/face.test.ts`).
 - **B-roll (F07).** A `broll` visual is laid over its frames from its own source
   range (an image loops). Layouts: `full` (whole frame), `split` (top half),
   `inset` (70% × 30% of the frame, centred at the top of the safe area). Each
-  fills its box and is cropped to it. Nothing in the product places B-roll yet
-  (see [features.md](features.md)).
+  fills its box and is cropped to it. The director places it from the user's
+  tagged B-roll pool ([director.md](director.md#rules-director)).
+- **Logo (F17).** When the input has a `logo`, it is drawn aspect-kept inside a
+  box of 20% × 6% of the frame at the top-right corner of the safe area, above
+  B-roll and under the overlay, so a hook covers it while shown.
 - **Overlay.** The PNG stream is laid on top, then converted to BT.709 TV-range
   `yuv420p`.
 
@@ -307,9 +339,20 @@ no plan or transcript string enters the graph (`test/compose.test.ts`).
   `scene_text_overflow`, `font_missing`).
 - `timings`: `colorMs`, `loudnessMs`, `composeMs`, `totalMs`.
 - `overlayCaptures`.
+- `faces`: the QA `face_crop` samples, the middle frame of each segment with a
+  confident face and the face rect there after the crop and any punch zoom.
+  Empty without face tracks.
 
 `versions` adds `rendererBrowser`, `chromium` (the browser version), `ffmpeg`
 (from `ffmpeg -version`) and `sceneRuntime` to the caller's versions.
+
+### `renderStems`
+
+`renderStems(input, outDir, signal?)` writes `dialogue.wav`, `music.wav` and
+`sfx.wav` (48 kHz stereo 16-bit, exactly `totalSamples` long) from the same mix
+buses the render uses: seam fades, the Studio voice chain, music fades, gain and
+ducking, and SFX placement, before loudness normalisation. An empty bus is
+silence. The engine's export calls it.
 
 ### `renderStill`
 

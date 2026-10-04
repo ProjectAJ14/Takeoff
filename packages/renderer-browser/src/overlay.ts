@@ -11,6 +11,7 @@ import { captionBox, platformSafeArea, rectInside, type Rect } from '@takeoff/re
 import type { BrandProfile, RenderProfile } from '@takeoff/contracts';
 import type { RenderInput } from '@takeoff/renderer-api';
 import type { CaptionSpec, OverlayBrand, OverlaySpec, PageViolation, SceneSpec, SeekResult } from './spec.ts';
+import { faceInOutput } from './compose.ts';
 
 export type ViolationCode = PageViolation['code'] | 'undeclared_network' | 'caption_outside_safe_area' | 'scene_outside_safe_area';
 export interface OverlayViolation {
@@ -112,7 +113,7 @@ export function buildOverlay(input: RenderInput, profile: RenderProfile): Built 
     const words = tokens.length === cc.words.length
       ? cc.words.map((w, i) => ({ text: tokens[i]!, startFrame: w.startFrame - cc.startFrame, endFrame: w.endFrame - cc.startFrame, emphasis: c.emphasisWordIds.includes(w.wordId) }))
       : null;
-    captions.push({ id: c.id, startFrame: cc.startFrame, endFrame: cc.endFrame, template: c.template, position: c.positionPolicy, words, text: c.text });
+    captions.push({ id: c.id, startFrame: cc.startFrame, endFrame: cc.endFrame, template: c.template, position: captionSlot(input, cc, c.positionPolicy, width, height), words, text: c.text });
   }
   const scenes: SceneSpec[] = [];
   for (const cv of compiled.visuals) {
@@ -129,6 +130,23 @@ export function buildOverlay(input: RenderInput, profile: RenderProfile): Built 
   files.set('/index.html', { body: html, type: 'text/html; charset=utf-8' });
   files.set('/runtime.js', { body: sceneRuntime(), type: 'text/javascript; charset=utf-8' });
   return { spec: { width, height, fps: compiled.fps, seed: input.seed, brand: ob, fontLoads, captions, scenes }, files };
+}
+
+/**
+ * F06: `safe_face_aware` resolves to `safe_top` when the face (union over the segments the caption spans, in render
+ * pixels) overlaps the bottom slot but not the top one; otherwise the slot is unchanged (bottom without a face).
+ * ponytail: face box before punch zoom; a tracked punch grows it by at most its scale around its own centre.
+ */
+function captionSlot(input: RenderInput, cc: { startFrame: number; endFrame: number }, position: CaptionSpec['position'], width: number, height: number): CaptionSpec['position'] {
+  if (position !== 'safe_face_aware' || !input.faceTracks) return position;
+  let face: Rect | null = null;
+  for (const s of input.compiled.segments) {
+    if (s.outputEndFrame <= cc.startFrame || s.outputStartFrame >= cc.endFrame) continue;
+    const r = faceInOutput(input, s, width, height)?.rect;
+    if (r) face = face ? union(face, r) : r;
+  }
+  const box = captionBox(width, height, position, face);
+  return face && box.y === captionBox(width, height, 'safe_top').y ? 'safe_top' : position;
 }
 
 export interface OverlayFrame {
@@ -170,7 +188,8 @@ function union(a: Rect | undefined, b: Rect): Rect {
 export async function openOverlay(input: RenderInput, profile: RenderProfile, signal?: AbortSignal): Promise<OverlaySession> {
   signal?.throwIfAborted();
   const { spec, files } = buildOverlay(input, profile);
-  const browser: Browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+  // OS sandbox on (Playwright's default is --no-sandbox). Linux needs unprivileged user namespaces (see .github/workflows/test.yml).
+  const browser: Browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: LAUNCH_ARGS });
   const onAbort = () => void browser.close().catch(() => {});
   signal?.addEventListener('abort', onAbort, { once: true });
   try {

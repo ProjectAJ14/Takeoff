@@ -148,6 +148,10 @@ export class Workspace {
     if (cached) return cached;
     if (!existsSync(join(real, 'project.db'))) throw new EngineError('not_a_project', 'that folder is not a Takeoff project', 'Run init on it first.');
     const e = Engine.open(real, this.opts);
+    // After a crash: interrupted jobs leave `running`, partial files go. Runs to completion synchronously, before any
+    // job of this process starts. ponytail: assumes one process per project; a second live process on the same
+    // project would see its running jobs requeued — add a per-project lock file if that becomes a real setup.
+    e.recover().catch(() => undefined);
     this.#engines.set(e.root, e);
     this.#register(e);
     return e;
@@ -223,13 +227,19 @@ export function snapshot(e: Engine) {
   return {
     schemaVersion: '1.0' as const,
     project: e.store.info(),
-    assets: e.store.listAssets().map((m) => ({ ...m, pool: e.store.getSetting<{ pool: string }>(`asset:${m.id}`)?.pool ?? null })),
+    assets: e.store.listAssets().map((m) => {
+      const meta = e.assetMeta(m.id);
+      return { ...m, pool: meta?.pool ?? null, name: meta?.name ?? null, tags: meta?.tags ?? [] };
+    }),
     transcripts: Object.values(ctx.transcripts).map((t) => ({ assetId: t.assetId, language: t.language, words: t.words, sentences: t.sentences })),
     plan: head ? { revision: head.revision, planHash: head.planHash, plan: head.plan } : null,
     revisions: e.store.listRevisions(),
     latestJob: jobs.at(-1) ?? null,
     artifacts: artifacts(e).map(({ abs: _a, ...x }) => x),
     editDefaults: editDefaults(e) ?? null,
+    /** F13: up to three verbatim hook options for the head plan's run (empty when the hook is off). */
+    hookOptions: e.store.getSetting<{ revision: number; options: Array<{ text: string; evidenceIds: Id[] }> }>('hookOptions')?.options ?? [],
+    brands: e.store.listBrandProfiles().map((b) => ({ id: b.id, version: b.version, name: b.name })),
   };
 }
 

@@ -20,8 +20,12 @@ export interface AppCtx {
   setProjectFolder(p: string | null): void;
   projectId: string | null;
   setProjectId(id: string | null): void;
-  brand: BrandProfile | null;
-  setBrand(b: BrandProfile | null): void;
+  /** The app brand library (latest version of each), from the engine; never localStorage. */
+  brands: BrandProfile[];
+  refreshBrands(): void;
+  /** Brand chosen for new edits (a per-viewer convenience; the brand itself lives in the engine). */
+  brandId: string | null;
+  setBrandId(id: string | null): void;
   ground: Ground;
   setGround(g: Ground): void;
   go(screen: Screen): void;
@@ -34,7 +38,8 @@ export function App() {
   const [ground, setGround] = usePref<Ground>('ground', 'ink');
   const [projectFolder, setProjectFolder] = usePref<string | null>('projectFolder', null);
   const [projectId, setProjectId] = usePref<string | null>('projectId', null);
-  const [brand, setBrand] = usePref<BrandProfile | null>('brand', null);
+  const [brandId, setBrandId] = usePref<string | null>('brandId', null);
+  const [brands, setBrands] = useState<BrandProfile[]>([]);
   const [screen, setScreen] = useState<Screen>(firstRunDone ? 'create' : 'first-run');
   const [job, setJob] = useState<{ id: string; then: Screen } | null>(null);
   const [caps, setCaps] = useState<Capabilities | null>(null);
@@ -48,11 +53,17 @@ export function App() {
       .catch((e) => setError(describe(e)));
   };
   useEffect(refreshCaps, []);
+  const refreshBrands = () => {
+    api<{ brands: BrandProfile[] }>('GET', '/v1/brands')
+      .then((r) => setBrands(r.brands))
+      .catch((e) => setError(describe(e)));
+  };
+  useEffect(refreshBrands, []);
   // Ink is the default and never follows the OS; paper only when chosen in Settings.
   useEffect(() => document.documentElement.setAttribute('data-mode', ground), [ground]);
 
   const ctx: AppCtx = {
-    caps, system, refreshCaps, projectFolder, setProjectFolder, projectId, setProjectId, brand, setBrand, ground, setGround,
+    caps, system, refreshCaps, projectFolder, setProjectFolder, projectId, setProjectId, brands, refreshBrands, brandId, setBrandId, ground, setGround,
     go: setScreen,
     runJob: (id, then) => (setJob({ id, then }), setScreen('processing')),
   };

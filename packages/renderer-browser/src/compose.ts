@@ -4,9 +4,9 @@
 import { resolve } from 'node:path';
 import { easeInOutCubic, frameProgress, platformSafeArea } from '@takeoff/renderer-api';
 import { framesToSamples, frameToUs, usToSamples } from '@takeoff/compiler';
-import type { BrollVisual, CompiledTimeline, CropTransform, EditPlan, Id, PunchTransform, Rational } from '@takeoff/contracts';
+import type { BrollVisual, CompiledSegment, CompiledTimeline, CropTransform, EditPlan, Id, PunchTransform, Rational } from '@takeoff/contracts';
 import type { ColorCorrection } from '@takeoff/media';
-import type { ResolvedAsset } from '@takeoff/renderer-api';
+import type { FaceTrack, Rect, ResolvedAsset } from '@takeoff/renderer-api';
 
 export type BrowserResolvedAsset = ResolvedAsset & { /** CFR proxy used for draft video; original otherwise. */ proxyPath?: string };
 
@@ -46,32 +46,79 @@ export interface ComposeContext {
   draft: boolean;
   /** Per-asset F12 corrections; absent when auto colour is off or the source is HDR. */
   colors: Map<Id, ColorCorrection>;
+  /** F06/F08 face tracks per asset (RenderInput.faceTracks); absent = centre framing. */
+  faceTracks?: Record<Id, FaceTrack>;
+  /** RenderInput.faceZoomMaxUpscale; default 1. */
+  faceZoomMaxUpscale?: number;
+  /** F17 brand logo (PNG/JPEG, hash-verified by the caller); drawn in the safe area's top-right corner. */
+  logo?: { path: string };
 }
+/** What face framing needs; a RenderInput satisfies it too. */
+export type FaceContext = Pick<ComposeContext, 'compiled' | 'plan' | 'assets' | 'faceTracks'>;
 
-function asset(c: ComposeContext, id: Id): BrowserResolvedAsset {
+function asset(c: Pick<ComposeContext, 'assets'>, id: Id): BrowserResolvedAsset {
   if (!Object.hasOwn(c.assets, id)) throw new RangeError(`asset ${id} is not resolved`);
   return c.assets[id]!;
 }
 
 /** Displayed source size after rotation (FFmpeg autorotates). */
-function displayDims(a: BrowserResolvedAsset): { w: number; h: number } {
+export function displayDims(a: ResolvedAsset): { w: number; h: number } {
   const v = a.manifest.probe.video;
   if (!v) throw new RangeError(`asset ${a.manifest.id} has no video`);
   return v.rotation === 90 || v.rotation === 270 ? { w: v.height, h: v.width } : { w: v.width, h: v.height };
 }
 
 /**
- * Crop as fractions of the displayed source: the largest output-aspect rect inside the plan crop
- * (or the whole frame), centred. Fractions apply to the proxy and the original alike; never outside the source.
+ * F08: the face for a compiled segment as fractions of the displayed source: the track entry overlapping most of
+ * the segment's source range. Null without a track or below confidence 0.5 (multiple faces, lost): keep the centre.
+ * ponytail: one framing per segment (no pan inside a cut); a per-frame x expression if speakers move mid-segment.
  */
-export function cropFractions(c: ComposeContext, segmentId: Id, src: { w: number; h: number }) {
+export function segmentFace(c: Pick<ComposeContext, 'faceTracks'>, s: CompiledSegment): Rect | null {
+  const t = c.faceTracks && Object.hasOwn(c.faceTracks, s.assetId) ? c.faceTracks[s.assetId]! : null;
+  let best: FaceTrack['track'][number] | null = null, most = 0;
+  for (const e of t?.track ?? []) {
+    const overlap = Math.min(e.endUs, s.sourceEndUs) - Math.max(e.startUs, s.sourceStartUs);
+    if (overlap > most) [best, most] = [e, overlap];
+  }
+  if (!t || !best || best.confidence < 0.5) return null;
+  return { x: best.x / t.width, y: best.y / t.height, w: best.w / t.width, h: best.h / t.height };
+}
+
+/**
+ * Crop as fractions of the displayed source: the largest output-aspect rect inside the plan crop
+ * (or the whole frame), centred, or centred on `face` horizontally and clamped inside the plan crop.
+ * Fractions apply to the proxy and the original alike; never outside the source.
+ */
+export function cropFractions(c: Pick<ComposeContext, 'plan' | 'compiled'>, segmentId: Id, src: { w: number; h: number }, face: Rect | null = null) {
   const t = c.plan.transforms.find((x): x is CropTransform => x.kind === 'crop' && x.segmentId === segmentId);
   const r = t ? t.rect : { x: 0, y: 0, width: 1, height: 1 };
   const rw = r.width * src.w, rh = r.height * src.h;
   const aspect = c.compiled.width / c.compiled.height;
   const cw = Math.min(rw, rh * aspect), ch = cw / aspect;
-  const fx = (r.x * src.w + (rw - cw) / 2) / src.w, fy = (r.y * src.h + (rh - ch) / 2) / src.h;
-  return { fw: cw / src.w, fh: ch / src.h, fx, fy };
+  const fw = cw / src.w, fy = (r.y * src.h + (rh - ch) / 2) / src.h;
+  const fx = face ? Math.max(r.x, Math.min(r.x + r.width - fw, face.x + face.w / 2 - fw / 2)) : (r.x * src.w + (rw - cw) / 2) / src.w;
+  return { fw, fh: ch / src.h, fx, fy };
+}
+
+/** The segment's face in output pixels (render size W x H) after its crop, the crop, and the source size; null without a face. */
+export function faceInOutput(c: FaceContext, s: CompiledSegment, W: number, H: number) {
+  const face = segmentFace(c, s);
+  if (!face) return null;
+  const src = displayDims(asset(c, s.assetId));
+  const f = cropFractions(c, s.segmentId, src, face);
+  const rect = { x: Math.round(((face.x - f.fx) / f.fw) * W), y: Math.round(((face.y - f.fy) / f.fh) * H), w: Math.round((face.w / f.fw) * W), h: Math.round((face.h / f.fh) * H) };
+  return { rect, crop: f, src };
+}
+
+/**
+ * F08 tracked_face punch at `frame`: zoom centre in render pixels and the largest scale that keeps output pixels per
+ * source pixel <= faceZoomMaxUpscale. Null when no face is tracked there (the punch zooms on the centre, uncapped as before).
+ */
+function facePunch(c: ComposeContext, frame: number): { cx: number; cy: number; maxScale: number } | null {
+  const s = c.compiled.segments.find((x) => frame >= x.outputStartFrame && frame < x.outputEndFrame);
+  const f = s && faceInOutput(c, s, c.width, c.height);
+  if (!f) return null;
+  return { cx: f.rect.x + f.rect.w / 2, cy: f.rect.y + f.rect.h / 2, maxScale: ((c.faceZoomMaxUpscale ?? 1) * f.crop.fw * f.src.w) / c.compiled.width };
 }
 function cropFilter(f: { fw: number; fh: number; fx: number; fy: number }): string {
   const [fw, fh, fx, fy] = [dec(f.fw, 0, 1), dec(f.fh, 0, 1), dec(f.fx, 0, 1), dec(f.fy, 0, 1)];
@@ -96,18 +143,25 @@ function videoAt(g: Graph, path: string, srcUs: number, n: number, fps: Rational
   return out;
 }
 
-/** Per-frame punch zoom (F08): eased in over transitionFrames, held to the transform's end. 1 = no zoom. */
-export function zoomAt(c: ComposeContext, frame: number): number {
-  let z = 1;
+/**
+ * Per-frame punch zoom (F08): eased in over transitionFrames, held to the transform's end. 1 = no zoom.
+ * `center` is the render-pixel zoom centre for a tracked_face punch on a tracked face; null zooms on the frame centre.
+ */
+export function punchAt(c: ComposeContext, frame: number): { z: number; center: { x: number; y: number } | null } {
+  let z = 1, center: { x: number; y: number } | null = null;
   for (const ct of c.compiled.transforms) {
     if (ct.kind !== 'punch' || frame < ct.startFrame || frame >= ct.endFrame) continue;
     const t = c.plan.transforms.find((x): x is PunchTransform => x.id === ct.transformId && x.kind === 'punch');
     if (!t) continue;
+    const fp = t.centerPolicy === 'tracked_face' ? facePunch(c, frame) : null;
     const e = easeInOutCubic(frameProgress(frame - ct.startFrame, 0, t.transitionFrames));
-    z = Math.max(z, 1 + (Math.min(t.scale, 1.25) - 1) * e);
+    z = Math.max(z, 1 + (Math.min(t.scale, 1.25, fp?.maxScale ?? 1.25) - 1) * e);
+    if (fp) center = { x: fp.cx, y: fp.cy };
   }
-  return Math.round(z * 1e4) / 1e4;
+  z = Math.round(z * 1e4) / 1e4;
+  return { z, center: z === 1 ? null : center };
 }
+export const zoomAt = (c: ComposeContext, frame: number): number => punchAt(c, frame).z;
 
 /**
  * Video for output frames [from, to) at render size, with B-roll; the caller overlays the PNG stream.
@@ -122,7 +176,7 @@ export function videoGraph(g: Graph, c: ComposeContext, from: number, to: number
     if (b <= a) continue;
     const as = asset(c, s.assetId);
     const path = c.draft && as.proxyPath ? as.proxyPath : as.path;
-    const chain = `${cropFilter(cropFractions(c, s.segmentId, displayDims(as)))},scale=${int(W, 2)}:${int(H, 2)}:flags=bicubic,setsar=1${colorFilter(c.colors.get(s.assetId))}`;
+    const chain = `${cropFilter(cropFractions(c, s.segmentId, displayDims(as), segmentFace(c, s)))},scale=${int(W, 2)}:${int(H, 2)}:flags=bicubic,setsar=1${colorFilter(c.colors.get(s.assetId))}`;
     parts.push(videoAt(g, path, s.sourceStartUs + frameToUs(a - s.outputStartFrame, fps), b - a, fps, chain));
   }
   if (!parts.length) throw new RangeError(`no segment covers frames [${from}, ${to})`);
@@ -131,19 +185,25 @@ export function videoGraph(g: Graph, c: ComposeContext, from: number, to: number
   let cur = label(g, 'base');
   g.filters.push(`${parts.map((p) => `[${p}]`).join('')}concat=n=${parts.length}:v=1:a=0,${restamp}[${cur}]`);
 
-  // Punch zoom as runs of equal zoom: crop the centre by 1/z, scale back. Constant-size crops, no zoompan jitter.
-  const runs: Array<{ a: number; b: number; z: number }> = [];
+  // Punch zoom as runs of equal zoom and centre: crop by 1/z (around the frame or face centre), scale back.
+  // Constant-size crops, no zoompan jitter; a face-centred crop is clamped inside the frame.
+  const runs: Array<{ a: number; b: number; z: number; at: string }> = [];
   for (let f = from; f < to; f++) {
-    const z = zoomAt(c, f);
+    const { z, center } = punchAt(c, f);
+    let at = '';
+    if (center) {
+      const cw = even(W / z), ch = even(H / z);
+      at = `:${int(Math.max(0, Math.min(W - cw, Math.round(center.x - cw / 2))), 0, W - cw)}:${int(Math.max(0, Math.min(H - ch, Math.round(center.y - ch / 2))), 0, H - ch)}`;
+    }
     const last = runs.at(-1);
-    if (last && last.z === z) last.b = f + 1;
-    else runs.push({ a: f, b: f + 1, z });
+    if (last && last.z === z && last.at === at) last.b = f + 1;
+    else runs.push({ a: f, b: f + 1, z, at });
   }
   if (runs.some((r) => r.z !== 1)) {
     const outs = runs.map(() => label(g, 'z'));
     g.filters.push(`[${cur}]split=${runs.length}${outs.map((o) => `[${o}i]`).join('')}`);
     runs.forEach((r, i) => {
-      const zoom = r.z === 1 ? '' : `,crop=${even(W / r.z)}:${even(H / r.z)},scale=${int(W, 2)}:${int(H, 2)}:flags=bicubic,setsar=1`;
+      const zoom = r.z === 1 ? '' : `,crop=${even(W / r.z)}:${even(H / r.z)}${r.at},scale=${int(W, 2)}:${int(H, 2)}:flags=bicubic,setsar=1`;
       g.filters.push(`[${outs[i]}i]trim=start_frame=${int(r.a - from)}:end_frame=${int(r.b - from)},setpts=PTS-STARTPTS${zoom}[${outs[i]}]`);
     });
     const z = label(g, 'zoomed');
@@ -178,7 +238,37 @@ export function videoGraph(g: Graph, c: ComposeContext, from: number, to: number
     g.filters.push(`[${cur}][${shifted}]overlay=x=${int(box.x)}:y=${int(box.y)}:eof_action=pass:enable='between(n,${int(a - from)},${int(b - from - 1)})'[${out}]`);
     cur = out;
   }
+
+  // F17 logo: aspect preserved inside a box of 20% width x 6% height, top-right corner of the safe area.
+  if (c.logo) {
+    const i = addInput(g, '-loop', '1', '-framerate', rate(fps), '-i', ffFile(c.logo.path));
+    const lg = label(g, 'lg'), out = label(g, 'vl');
+    g.filters.push(`[${i}:v]scale=${int(even(W * 0.2), 2)}:${int(even(H * 0.06), 2)}:force_original_aspect_ratio=decrease:flags=bicubic,format=rgba,setsar=1,trim=end_frame=${int(to - from, 1)},setpts=PTS-STARTPTS[${lg}]`);
+    g.filters.push(`[${cur}][${lg}]overlay=x=${int(safe.x + safe.w)}-w:y=${int(safe.y)}:format=auto:eof_action=pass[${out}]`);
+    cur = out;
+  }
   return cur;
+}
+
+/**
+ * QA face_crop samples: the mid frame of every segment with a confident face, and the face rect there in render
+ * pixels after the crop and any punch zoom (the same math as the graph). Empty without face tracks.
+ */
+export function faceSamples(c: ComposeContext): Array<{ frame: number; rect: Rect }> {
+  const out: Array<{ frame: number; rect: Rect }> = [];
+  const { width: W, height: H } = c;
+  for (const s of c.compiled.segments) {
+    const f = faceInOutput(c, s, W, H);
+    if (!f) continue;
+    const frame = Math.floor((s.outputStartFrame + s.outputEndFrame - 1) / 2);
+    const { z, center } = punchAt(c, frame);
+    const cw = z === 1 ? W : even(W / z), ch = z === 1 ? H : even(H / z);
+    const x0 = center ? Math.max(0, Math.min(W - cw, Math.round(center.x - cw / 2))) : Math.floor((W - cw) / 2);
+    const y0 = center ? Math.max(0, Math.min(H - ch, Math.round(center.y - ch / 2))) : Math.floor((H - ch) / 2);
+    const k = W / cw;
+    out.push({ frame, rect: { x: Math.round((f.rect.x - x0) * k), y: Math.round((f.rect.y - y0) * (H / ch)), w: Math.round(f.rect.w * k), h: Math.round(f.rect.h * (H / ch)) } });
+  }
+  return out;
 }
 
 /** Overlay the RGBA PNG input; convert to BT.709 4:2:0 for video, or RGB for a still PNG. */
@@ -200,11 +290,19 @@ export interface LoudnormMeasure {
 const AFMT = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
 const DENOISE = { studio_conservative: 10, studio_strong: 20 } as const;
 
+export interface Buses {
+  /** Dialogue after seam fades and (when on) the Studio voice chain. */
+  dialogue: string;
+  /** Music after fades and gain, ducked under dialogue when the cue asks; null without music. */
+  music: string | null;
+  sfx: string[];
+}
+
 /**
- * The full mix up to (not including) loudness normalisation. `voice` = Studio voice active (F11).
- * Returns the label of the summed mix.
+ * The mix buses up to (not including) loudness normalisation. `voice` = Studio voice active (F11).
+ * The mix and the export stems are both built from these labels, so they share every audio decision.
  */
-function mixGraph(g: Graph, c: ComposeContext, voice: boolean): string {
+function buses(g: Graph, c: ComposeContext, voice: boolean): Buses {
   const { compiled: tl, plan } = c;
   const fps = tl.fps;
   const fade = Math.round((plan.audio.dialogue.seamFadeMs * 48000) / 1000);
@@ -235,7 +333,7 @@ function mixGraph(g: Graph, c: ComposeContext, voice: boolean): string {
     dlg = out;
   }
 
-  const mix: string[] = [];
+  let musicOut: string | null = null;
   const music = tl.audioEvents.find((e) => e.kind === 'music');
   const cue = plan.audio.music;
   let sidechain: string | null = null;
@@ -258,18 +356,51 @@ function mixGraph(g: Graph, c: ComposeContext, voice: boolean): string {
       g.filters.push(`[${m}][${sidechain}]sidechaincompress=threshold=0.03:ratio=8:attack=15:release=300[${ducked}]`);
       m = ducked;
     }
-    mix.push(m);
+    musicOut = m;
   }
+  const sfx: string[] = [];
   for (const e of tl.audioEvents) {
     if (e.kind !== 'sfx') continue;
     const i = addInput(g, '-i', ffFile(asset(c, e.assetId).path));
     const out = label(g, 'sx');
     g.filters.push(`[${i}:a]aresample=48000,${AFMT},atrim=end_sample=${int(e.endSample - e.startSample, 1)},volume=${dec(e.gainDb, -60, 12)}dB,adelay=delays=${int(e.startSample)}S:all=1[${out}]`);
-    mix.push(out);
+    sfx.push(out);
   }
-  if (!mix.length) return dlg;
+  return { dialogue: dlg, music: musicOut, sfx };
+}
+
+/** The full mix up to (not including) loudness normalisation. Returns the label of the summed mix. */
+function mixGraph(g: Graph, c: ComposeContext, voice: boolean): string {
+  const b = buses(g, c, voice);
+  const mix = [...(b.music ? [b.music] : []), ...b.sfx];
+  if (!mix.length) return b.dialogue;
   const out = label(g, 'mix');
-  g.filters.push(`[${dlg}]${mix.map((m) => `[${m}]`).join('')}amix=inputs=${mix.length + 1}:duration=first:normalize=0:dropout_transition=0[${out}]`);
+  g.filters.push(`[${b.dialogue}]${mix.map((m) => `[${m}]`).join('')}amix=inputs=${mix.length + 1}:duration=first:normalize=0:dropout_transition=0[${out}]`);
+  return out;
+}
+
+export type Stem = 'dialogue' | 'music' | 'sfx';
+
+/**
+ * One export stem with the mix's own decisions (seam fades, Studio voice chain, music fades/gain/ducking, SFX
+ * placement), before loudness normalisation, padded/trimmed to exactly totalSamples. Other buses are sunk.
+ */
+export function stemGraph(g: Graph, c: ComposeContext, stem: Stem): string {
+  const b = buses(g, c, voiceOn(c));
+  const total = c.compiled.totalSamples;
+  const pick = stem === 'dialogue' ? [b.dialogue] : stem === 'music' ? (b.music ? [b.music] : []) : b.sfx;
+  for (const l of [b.dialogue, ...(b.music ? [b.music] : []), ...b.sfx]) if (!pick.includes(l)) g.filters.push(`[${l}]anullsink`);
+  let src: string;
+  if (!pick.length) {
+    src = label(g, 'silent');
+    g.filters.push(`anullsrc=r=48000:cl=stereo,atrim=end_sample=${int(total, 1)}[${src}]`);
+  } else if (pick.length === 1) src = pick[0]!;
+  else {
+    src = label(g, 'sum');
+    g.filters.push(`${pick.map((p) => `[${p}]`).join('')}amix=inputs=${pick.length}:normalize=0:dropout_transition=0[${src}]`);
+  }
+  const out = label(g, 'stem');
+  g.filters.push(`[${src}]${AFMT},apad=whole_len=${int(total, 1)},atrim=end_sample=${int(total, 1)},asetpts=N/SR/TB[${out}]`);
   return out;
 }
 

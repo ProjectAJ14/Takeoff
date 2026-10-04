@@ -94,8 +94,9 @@ constant `48000`.
 
 An edit plan is the whole edit as data. It has these required top-level
 fields: `schemaVersion`, `projectId`, `revision`, `output`, `settings`,
-`assets` (max 500), `transcriptRef`, `brandProfileRef`, `styleProfileRef` (each
-a `relPath` or `null`), `decisions` (max 5000), `segments` (max 2000),
+`assets` (max 500), `transcriptRef`, `styleProfileRef` (each a `relPath` or
+`null`), `brandProfileRef` (a `relPath`, one stored brand version
+`brands/<id>@<version>` with version ≥ 1, or `null`), `decisions` (max 5000), `segments` (max 2000),
 `captions` (max 2000), `visuals` (max 100), `transforms` (max 500), `audio`,
 `reviewMarkers` (max 1000) and `provenance`. The full example is
 [example-edit-plan.json](example-edit-plan.json).
@@ -103,7 +104,7 @@ a `relPath` or `null`), `decisions` (max 5000), `segments` (max 2000),
 | Object | Fields and limits |
 |---|---|
 | `output` | `width`, `height` (16–7680), `fps` (rational), `audioSampleRate` (`48000`), `colorSpace` (`bt709`), `targetFrames` (≥1 or `null`), `lengthPolicy` (`hard_max` \| `soft_target` \| `none`) |
-| `settings` | Required booleans: `badTakes`, `fillers`, `silence`, `captions`, `userBroll`, `aiBroll`, `zoom`, `music`, `sfx`, `studioVoice`, `autoColor`, `textHook`, `motionGraphics`. Also required: `networkPolicy`. Optional: `fillerStrength` (`conservative` \| `normal` \| `aggressive`), `targetSeconds` (integer 1–3600 or `null`), `hook` `{autoSelect, text}` (text 1–120 chars or `null`) |
+| `settings` | Required booleans: `badTakes`, `fillers`, `silence`, `captions`, `userBroll`, `aiBroll`, `zoom`, `music`, `sfx`, `studioVoice`, `autoColor`, `textHook`, `motionGraphics`. Also required: `networkPolicy`. Optional: `fillerStrength` (`conservative` \| `normal` \| `aggressive`), `targetSeconds` (integer 1–3600 or `null`), `hook` `{autoSelect, text}` (text 1–120 chars or `null`), `fillerDictionary` `{preserve, remove}` (each ≤ 200 strings of 1–40 chars; preserve wins) |
 | `assets[]` | `id`, `kind`, `manifestRef` (`relPath`) |
 | `decisions[]` | `id`, `assetId`, `action` (`remove` \| `keep` \| `review`), `sourceStartUs`, `sourceEndUs`, `reason`, `evidenceIds`, `confidenceTier`. Optional: `wordIds`, `detector`, `locked` |
 | `segments[]` | `id`, `assetId`, `sourceStartUs`, `sourceEndUs`, `wordIds`, `speed` (rational), `cropPolicy` (`face_safe_vertical` \| `center` \| `manual`), `locked` |
@@ -111,11 +112,11 @@ a `relPath` or `null`), `decisions` (max 5000), `segments` (max 2000),
 | `anchor` | `wordId`, `edge` (`start` \| `end`), `offsetFrames` (−900 to 900) |
 | `visuals[]` | Discriminated by `kind`. Every visual has `id`, `segmentId`, `anchor`, `durationFrames` (1–108000), `evidenceIds`, `fallback` (`omit` \| `presenter_only` \| `static_card`) and `locked` |
 | ↳ `motion_template` | `template` plus typed `params`: `kinetic_text_v1` takes `{lines}` (1–4 labels). `request_flow_v1` takes `{containerLabel, internalNode, externalNode, edgeLabel}`. `comparison_list_v1` takes `{title, items}` (2–6 items). A label is 1–60 chars |
-| ↳ `broll` | `assetId`, `sourceStartUs`, `sourceEndUs`, `layout` (`full` \| `inset` \| `split`) |
+| ↳ `broll` | `assetId`, `sourceStartUs`, `sourceEndUs`, `layout` (`full` \| `inset` \| `split`). Optional `reason` (1–200 chars): why it was placed |
 | ↳ `hook_text` | `text` (1–120 chars) and `evidenceIds` (at least 1) |
 | `transforms[]` | Discriminated by `kind`. A `punch` has `id`, `segmentId`, `anchor`, `scale` (1–1.25), `centerPolicy` (`tracked_face` \| `center`), `transitionFrames` (0–60), optional `durationFrames` and `locked`. A `crop` has `id`, `segmentId`, `rect` `{x, y, width, height}` (fractions of the source frame) and `locked` |
 | `audio` | `dialogue` `{profile: studio_conservative \| studio_strong \| bypass, seamFadeMs: 0–100}`. `music` is `null` or `{assetId, startFrame, durationFrames, gainDb, duckUnderDialogue, fadeInFrames, fadeOutFrames, locked?}`, with fades of 0–600 frames. `sfx[]` (max 100) holds `{id, assetId, anchor, category: ui_click \| hit \| whoosh, gainDb, visualId?, locked}`. `mixTarget` is `{integratedLufs: −40 to −5, truePeakDbtp: −12 to 0}` |
-| `reviewMarkers[]` | `id`, `kind` (`uncertain_retake`, `meaning_risk`, `alignment_uncertain`, `duration_conflict`, `low_confidence_crop`, `visual_unavailable`, `orphaned_anchor`, `unsupported_claim`), `severity`, `message`, `refs` |
+| `reviewMarkers[]` | `id`, `kind` (`uncertain_retake`, `meaning_risk`, `alignment_uncertain`, `duration_conflict`, `low_confidence_crop`, `visual_unavailable`, `orphaned_anchor`, `unsupported_claim`, `source_clipping`), `severity`, `message`, `refs` |
 | `provenance` | `director` (`version`), `seed` (uint32), `promptVersion` (`version` or `null`) |
 
 ## `patch`

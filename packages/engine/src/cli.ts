@@ -7,25 +7,27 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
-import type { Settings } from '@takeoff/contracts';
+import type { BrandProfile, Settings } from '@takeoff/contracts';
+import { importBrandFile, libraryDir, saveLibraryBrand } from './brands.ts';
 import { ENGINE_VERSION, type EngineOptions, type PipelineResult, type RendererModule } from './engine.ts';
 import { EngineError, toErrorInfo } from './errors.ts';
 import { runMcp } from './mcp.ts';
 import { startServer } from './server.ts';
 import type { Transcriber } from './transcribe.ts';
-import { checkPlan, defaultAppDataDir, setEditDefaults, Workspace } from './workspace.ts';
+import { checkPlan, defaultAppDataDir, editDefaults, setEditDefaults, Workspace } from './workspace.ts';
 
 const run = promisify(execFile);
 
 const USAGE = `takeoff ${ENGINE_VERSION}
   init <dir> [--name N] [--toggles JSON] [--target S|auto]
-  import <dir> <files...> [--pool takes|broll|music|sfx]
+  import <dir> <files...> [--pool takes|broll|music|sfx] [--tags 'server,network']
+  brand <dir> <profile.json> [--logo logo.png] [--font 'Family=file.woff2']...
   transcribe <dir> [--glossary 'REST,Dio']
   edit <dir> [--toggles JSON] [--target S|auto] [--policy hard_max|soft_target] [--glossary 'REST,Dio'] [--director rules|ollama:<model>] [--director-timeout S]
   plan <dir>
   validate <plan.json> [--project dir]
   patch <dir> <patch.json>
-  render <dir> [--final]
+  render <dir> [--final]   (--final records a final render that export then reuses)
   qa <dir>
   export <dir> <dest> [--profile final_1080|draft_720] [--no-captions]
   capabilities
@@ -128,7 +130,7 @@ const done = (r: PipelineResult) => {
 const OPTIONS = {
   json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, name: { type: 'string' }, toggles: { type: 'string' }, target: { type: 'string' },
   policy: { type: 'string' }, pool: { type: 'string' }, project: { type: 'string' }, final: { type: 'boolean' }, profile: { type: 'string' },
-  'no-captions': { type: 'boolean' }, 'allow-network': { type: 'boolean' }, glossary: { type: 'string' }, director: { type: 'string' }, 'director-timeout': { type: 'string' }, port: { type: 'string' }, root: { type: 'string', multiple: true }, 'app-origin': { type: 'string' },
+  'no-captions': { type: 'boolean' }, tags: { type: 'string' }, logo: { type: 'string' }, font: { type: 'string', multiple: true }, 'allow-network': { type: 'boolean' }, glossary: { type: 'string' }, director: { type: 'string' }, 'director-timeout': { type: 'string' }, port: { type: 'string' }, root: { type: 'string', multiple: true }, 'app-origin': { type: 'string' },
 } as const;
 
 export async function main(argv: string[]): Promise<number> {
@@ -173,9 +175,36 @@ export async function main(argv: string[]): Promise<number> {
       case 'import': {
         need(2);
         ws = await cliWs([args[0]!], args.slice(1));
-        const items = await ws.open(args[0]!).importAssets(args.slice(1), { pool: (f.pool ?? 'takes') as 'takes' });
+        const e = ws.open(args[0]!);
+        const items = await e.importAssets(args.slice(1), { pool: (f.pool ?? 'takes') as 'takes' });
         if (items.some((i) => i.error)) process.exitCode = 1;
+        if (f.tags !== undefined) for (const i of items) if (i.assetId) e.setAssetTags(i.assetId, f.tags.split(',').map((t) => t.trim()).filter(Boolean));
         result = { items };
+        break;
+      }
+      case 'brand': {
+        // Files named here are approved: copied into the app brand library by hash, then the profile is saved as a
+        // new immutable version, stored in the project and selected for the next edit.
+        need(2);
+        const fonts = (f.font ?? []).map((x) => {
+          const i = x.indexOf('=');
+          if (i < 1) throw usage("--font must be 'Family=file'");
+          return { family: x.slice(0, i), file: x.slice(i + 1) };
+        });
+        ws = await cliWs([args[0]!], [args[1]!, ...(f.logo ? [f.logo] : []), ...fonts.map((x) => x.file)]);
+        const lib = libraryDir(appDataDir);
+        const draft = (await parseJson(args[1]!)) as BrandProfile;
+        if (!draft || typeof draft !== 'object') throw usage('the profile must be a JSON object');
+        if (f.logo) draft.logos = [{ assetId: importBrandFile(lib, ws.approved(f.logo), 'logo').assetId, role: 'primary' }];
+        for (const x of fonts) {
+          const assetId = importBrandFile(lib, ws.approved(x.file), 'font').assetId;
+          draft.fonts = [...(draft.fonts ?? []).filter((y) => y.role !== 'caption' && y.role !== 'heading'), { role: 'caption', family: x.family, assetId, license: 'user supplied' }, { role: 'heading', family: x.family, assetId, license: 'user supplied' }];
+        }
+        const saved = saveLibraryBrand(appDataDir, { ...draft, version: 1 });
+        const e = ws.open(args[0]!);
+        const ref = await e.saveBrandProfile(saved);
+        if (editDefaults(e)) setEditDefaults(e, { brandProfileId: saved.id });
+        result = { ref, version: saved.version };
         break;
       }
       case 'transcribe':
@@ -218,10 +247,7 @@ export async function main(argv: string[]): Promise<number> {
         need(1);
         ws = await cliWs([args[0]!]);
         const e = ws.open(args[0]!);
-        if (cmd === 'render' && f.final) {
-          const r = await e.exportProject({ profile: 'final_1080', destinationDir: join(e.root, 'exports'), burnCaptions: true });
-          result = { ...done(r), dir: r.dir };
-        } else result = done(await e.renderAffected());
+        result = done(await (cmd === 'render' && f.final ? e.renderFinal() : e.renderAffected()));
         break;
       }
       case 'export': {

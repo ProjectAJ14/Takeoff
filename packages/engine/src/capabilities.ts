@@ -22,10 +22,15 @@ export interface EngineCapabilities {
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 
-async function chromiumPresent(): Promise<boolean> {
+/**
+ * Renders launch Playwright's Chromium *headless shell* (`chromium.launch({ headless: true })`), not the full browser
+ * `chromium.executablePath()` names, so that is the binary to look for. Playwright's registry resolves its path.
+ */
+export async function chromiumPresent(): Promise<boolean> {
   try {
-    const pw = (await import('playwright')) as { chromium: { executablePath(): string } };
-    return existsSync(pw.chromium.executablePath());
+    const core = (await import('playwright-core/lib/coreBundle' as string)) as { registry: { registry: { findExecutable(n: string): { executablePath(sdk: string): string | undefined } | undefined } } };
+    const p = core.registry.registry.findExecutable('chromium-headless-shell')?.executablePath('javascript');
+    return !!p && existsSync(p);
   } catch {
     return false;
   }
@@ -74,8 +79,8 @@ export async function engineCapabilities(engine: CapabilitySource): Promise<Engi
     needs('F04', hasAsr, noAsr),
     needs('F05', hasAsr, noAsr),
     needs('F06', hasAsr && renderer && fonts, !hasAsr ? noAsr : !fonts ? 'Bundled caption fonts are missing' : noRender),
-    off('F07', 'Own B-roll placement is not implemented yet; AI B-roll is P1'),
-    needs('F08', renderer, noRender, () => degraded('F08', 'Centre punch zooms only; face tracking is not implemented')),
+    needs('F07', renderer, noRender, () => on('F07', 'Your own B-roll, placed where its tags match spoken words; AI B-roll is P1')),
+    needs('F08', renderer, noRender, () => (worker ? on('F08', 'Local face tracking centres the crop; generated zooms stay centred, and a face zoom never exceeds source resolution') : degraded('F08', 'Centre punch zooms only: the face tracking worker is not set up'))),
     needs('F09', renderer && library.some((e) => e.kind === 'music'), !renderer ? noRender : 'No licensed music installed; install the starter pack or import your own track'),
     needs('F10', renderer && library.some((e) => e.kind === 'sfx'), !renderer ? noRender : 'No sound effects installed; install the starter pack'),
     needs('F11', renderer, noRender),

@@ -2,10 +2,10 @@
 // token, native pickers, provider approvals, reveal-in-folder, and dropped-file paths. No Node, no raw ipcRenderer.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
-type Pool = 'takes' | 'broll';
+type Pool = 'takes' | 'broll' | 'font' | 'logo';
 const config = ipcRenderer.sendSync('takeoff:config') as { apiBase: string; token: string } | null;
 const pool = (kind: unknown): Pool => {
-  if (kind !== 'takes' && kind !== 'broll') throw new Error('kind must be takes or broll');
+  if (kind !== 'takes' && kind !== 'broll' && kind !== 'font' && kind !== 'logo') throw new Error('kind must be takes, broll, font or logo');
   return kind;
 };
 

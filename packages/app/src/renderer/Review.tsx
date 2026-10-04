@@ -272,6 +272,9 @@ function Adjust(p: { ctx: AppCtx; projectId: string; snap: Snapshot; plan: EditP
   const [busy, setBusy] = useState(false);
   const hook = p.plan.visuals.find((v) => v.kind === 'hook_text');
   const [hookText, setHookText] = useState(hook?.kind === 'hook_text' ? hook.text : '');
+  // F13: up to three verbatim options; picking one sends its own evidence word ids, an edit keeps the current ones.
+  const options = p.snap.hookOptions ?? [];
+  const [evidence, setEvidence] = useState<string[]>(hook?.kind === 'hook_text' ? hook.evidenceIds : (options[0]?.evidenceIds ?? []));
   const t = parseTarget(target, custom);
 
   const rerun = async () => {
@@ -325,13 +328,23 @@ function Adjust(p: { ctx: AppCtx; projectId: string; snap: Snapshot; plan: EditP
         {t.error && <span className="error-text">{t.error}</span>}
         <p className="hint">Re-running keeps every locked object.</p>
       </fieldset>
-      {hook?.kind === 'hook_text' && (
-        <form className="field" onSubmit={(e) => (e.preventDefault(), void p.onEdit('Hook updated', [{ op: 'set_hook', text: hookText.trim() || null, evidenceIds: hook.evidenceIds }]))}>
+      {(hook?.kind === 'hook_text' || options.length > 0) && (
+        <form className="field" onSubmit={(e) => (e.preventDefault(), void p.onEdit('Hook updated', [{ op: 'set_hook', text: hookText.trim() || null, evidenceIds: evidence }]))}>
+          {options.length > 0 && (
+            <fieldset className="radios radios--stack">
+              <legend>Hook options (from what you said)</legend>
+              {options.map((o, i) => (
+                <label key={o.evidenceIds.join()}>
+                  <input type="radio" name="hook-option" checked={hookText === o.text} onChange={() => (setHookText(o.text), setEvidence(o.evidenceIds))} /> {i + 1}. {o.text}
+                </label>
+              ))}
+            </fieldset>
+          )}
           <label className="field">
-            <span>Text hook</span>
+            <span>Text hook (edit freely)</span>
             <input value={hookText} maxLength={80} onChange={(e) => setHookText(e.target.value)} />
           </label>
-          <button type="submit" className="btn btn--ghost">
+          <button type="submit" className="btn btn--ghost" disabled={!evidence.length}>
             Save hook
           </button>
         </form>

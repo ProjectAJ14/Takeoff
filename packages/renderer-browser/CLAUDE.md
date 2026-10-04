@@ -14,8 +14,14 @@ PRD §5.5, §6 F06–F13, F15 (P0 templates), §7.4, §11 steps 2/7, §15, §19.
 | `src/overlay.ts` | `openOverlay` (sandboxed page session), `buildOverlay` (page spec + allowlisted files), `renderSize`, `sceneRuntime`/`sceneRuntimeHash`, `DEFAULT_PALETTE` |
 | `src/runtime.ts` | Page code, bundled by esbuild to an IIFE: caption scene (restrained, energetic, static), `hook_text`, `kinetic_text_v1`, `request_flow_v1`, `comparison_list_v1` |
 | `src/spec.ts` | Types shared by Node and the page (`OverlaySpec`, `SeekResult`, `PageViolation`) |
-| `src/compose.ts` | FFmpeg filter-graph builders: `videoGraph`, `audioGraph`, `measureGraph`, `zoomAt`, `cropFractions` |
+| `src/compose.ts` | FFmpeg filter-graph builders: `videoGraph` (incl. brand logo), `audioGraph`, `measureGraph`, `stemGraph` (all from the shared mix `buses`), `zoomAt`/`punchAt`, `cropFractions`; face framing `segmentFace`, `faceInOutput`, `faceSamples` (QA) |
 | `src/library.ts` | `generateLibraryAudio(outDir)`: 3 music beds (32–45 s) and `ui_click`/`hit`/`whoosh` SFX as WAV plus `library.json`, license `Takeoff original, generated` |
+
+`renderStems(input, outDir)` writes dialogue/music/sfx WAVs of exactly `totalSamples` from the same buses as the mix
+(seam fades, Studio voice chain, music fades/gain/ducking, SFX placement; before loudness normalisation).
+`BrowserRenderInput.logo` (`{path, hash}`, PNG/JPEG, hash and magic bytes checked → else `invalid_input`) is drawn
+aspect-kept inside 20% × 6% of the frame at the safe area's top-right corner, under the overlay (a hook covers it while shown).
+The artifact's `faces` lists QA face samples (mid frame of each tracked segment, rect after crop and punch).
 
 `RenderInput.assets[id]` may carry `proxyPath` (`BrowserResolvedAsset`): draft
 video reads it; audio and final video always read the original.
@@ -40,7 +46,7 @@ video reads it; audio and final video always read the original.
 - **Crop never leaves the source:** fractions are clamped inside the plan crop (or the full frame) and the FFmpeg expression clamps `x ≤ iw-ow`, `y ≤ ih-oh`. Punch scale is capped at 1.25.
 - **Cancel** (`AbortSignal`) closes Chromium, SIGKILLs FFmpeg (SIGTERM can hang on an open stdin pipe) and deletes the partial. `outPath` is written only by the final rename, and an `outPath` (or its partial) equal to any asset, proxy or font path is refused as `invalid_input` before anything runs (lexical compare, not realpath). If FFmpeg exits early the capture loop stops.
 - **Layout QA.** Caption fit shrinks the font until the measured glyph rects fit ≤ 2 lines inside `captionBox` (energetic keeps a 10% margin for the pop and active-word scale). The artifact reports per-caption union bounds and violations: `undeclared_network` (hard failure), `caption_outside_safe_area`, `scene_outside_safe_area`, `caption_overflow`, `scene_text_overflow`, `font_missing`. The renderer reports; QA decides.
-- No face tracking reaches the renderer yet: `safe_face_aware` captions take the bottom slot and `tracked_face` punches zoom on the centre.
+- **Face awareness (F06/F08)** is driven only by `RenderInput.faceTracks` (validated: integer half-open spans, boxes inside their frame, aspect matching the asset's displayed orientation, else `invalid_input`). Per segment the track entry overlapping most of its source range is used; confidence < 0.5 or no track keeps today's behaviour. The 9:16 crop centres on the face x, clamped inside the plan crop. A `tracked_face` punch crops around the face centre (clamped inside the frame) and its scale is capped so output pixels per source pixel ≤ `faceZoomMaxUpscale` (default 1; a 1080p landscape source into 1080x1920 therefore gets no face zoom). `safe_face_aware` captions resolve to `safe_top` when the face (in render pixels, before punch) overlaps the bottom slot and not the top. Without `faceTracks` the graph and overlay are byte-identical to before (`test/face.test.ts`).
 - Messages and errors carry codes and numbers, never paths, transcript text or FFmpeg stderr.
 
 ## Golden environment

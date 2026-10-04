@@ -23,6 +23,7 @@ Kinds: `edit-plan`, `patch`, `transcript`, `asset-manifest`, `compiled-timeline`
 
 ## Invariants
 
+- `EditPlan.brandProfileRef` is a project-relative path or one stored brand version `brands/<id>@<version>` (version ≥ 1); fixtures `valid/edit-plan/all-visual-kinds.json` and `invalid/edit-plan/brand-ref-version-zero.json`.
 - Every top-level document requires `schemaVersion: "1.0"`. Unknown versions and
   unknown enum values are errors, never guesses.
 - Critical objects use `additionalProperties: false`. Visuals (`kind`),
@@ -38,6 +39,8 @@ Kinds: `edit-plan`, `patch`, `transcript`, `asset-manifest`, `compiled-timeline`
 - Schema checks only. Cross-field semantics (end > start, spans inside source
   duration, caption words surviving cuts, asset IDs resolving) belong to
   `packages/compiler`. Clock conversion helpers belong there too, not here.
+- `settings.fillerDictionary` is `{preserve, remove}`, each ≤200 strings of 1–40 chars;
+  B-roll visuals may carry an optional `reason` (≤200 chars).
 - Max counts bound visuals (100), segments and captions (2000), assets (500),
   caption words (12), hook options (3), patch ops (200).
 

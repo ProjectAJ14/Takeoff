@@ -34,6 +34,15 @@
     "hook": {
       "autoSelect": false,
       "text": "Dio is not a server"
+    },
+    "fillerDictionary": {
+      "preserve": [
+        "like"
+      ],
+      "remove": [
+        "literally",
+        "sort of"
+      ]
     }
   },
   "assets": [
@@ -49,7 +58,7 @@
     }
   ],
   "transcriptRef": "transcripts/take_a.json",
-  "brandProfileRef": "brands/developer_v1.json",
+  "brandProfileRef": "brands/developer@1",
   "styleProfileRef": null,
   "decisions": [
     {
@@ -240,7 +249,8 @@
         "w09"
       ],
       "fallback": "presenter_only",
-      "locked": false
+      "locked": false,
+      "reason": "B-roll tag 'server' matches a spoken word"
     },
     {
       "id": "hook_01",
@@ -324,6 +334,13 @@
       "refs": [
         "decision_02"
       ]
+    },
+    {
+      "id": "rm_clip",
+      "kind": "source_clipping",
+      "severity": "warning",
+      "message": "Severe clipping in the source; compare original and processed",
+      "refs": []
     }
   ],
   "provenance": {

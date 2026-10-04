@@ -44,6 +44,32 @@ export interface RenderInput {
   seed: number;
   /** Pinned component versions, e.g. { compiler: '1.0.0', chromium: '131.0', ffmpeg: '7.1' }. */
   versions: Record<string, string>;
+  /**
+   * F06/F08: smoothed face track per video asset id (the `faces` worker output fits as is). Absent = no face
+   * awareness: centre crop, centre punch, bottom caption slot.
+   */
+  faceTracks?: Record<Id, FaceTrack>;
+  /** Output pixels per source pixel a face-tracked punch zoom may reach (default 1.0: never upscale for a face zoom). */
+  faceZoomMaxUpscale?: number;
+}
+
+/** One piecewise-constant face box over source time `[startUs, endUs)`, in displayed source pixels. */
+export interface FaceTrackEntry {
+  startUs: number;
+  endUs: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 0..1; below 0.5 (multiple faces, lost) the renderer keeps the centre framing. */
+  confidence: number;
+}
+
+export interface FaceTrack {
+  /** Displayed (rotation-applied) source size the boxes are measured in. */
+  width: number;
+  height: number;
+  track: FaceTrackEntry[];
 }
 
 export interface RenderProgress {

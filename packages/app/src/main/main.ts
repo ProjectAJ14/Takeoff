@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { delimiter, dirname, extname, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Workspace, startServer, toErrorInfo, type RunningServer } from '@takeoff/engine';
-import { ORIGIN, POOLS, allowedRequest, csp, isMediaPath, isPool, testHooksEnabled } from './policy.ts';
+import { ORIGIN, POOL_NAMES, POOLS, allowedRequest, csp, isMediaPath, isPool, testHooksEnabled } from './policy.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RENDERER_DIR = join(HERE, 'renderer');
@@ -110,7 +110,7 @@ ipcMain.handle('takeoff:pick-folder', async (e) => {
 ipcMain.handle('takeoff:pick-files', async (e, kind: unknown) => {
   if (!trusted(e) || !win || !isPool(kind)) return [];
   const stub = testPick();
-  const r = stub ? { canceled: false, filePaths: stub } : await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: kind === 'takes' ? 'Recordings' : 'B-roll', extensions: [...POOLS[kind]] }] });
+  const r = stub ? { canceled: false, filePaths: stub } : await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: POOL_NAMES[kind], extensions: [...POOLS[kind]] }] });
   return r.canceled ? [] : approveFiles(r.filePaths, kind);
 });
 // Paths come from webUtils.getPathForFile on files the user dropped; still checked as media files.

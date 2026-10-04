@@ -29,6 +29,8 @@ interface Card {
   selected: boolean;
   durationUs: number | null;
   thumb?: string;
+  /** F07: B-roll tags (file-name words are added by the engine). */
+  tags?: string[];
 }
 type Pool = 'takes' | 'broll';
 
@@ -45,7 +47,7 @@ export function Create({ ctx }: { ctx: AppCtx }) {
   const [target, setTarget] = useState<TargetChoice>('auto');
   const [custom, setCustom] = useState('');
   const [hardMax, setHardMax] = useState(false);
-  const [useBrand, setUseBrand] = useState(!!ctx.brand);
+
   const [brief, setBrief] = useState('');
   const [preset, setPreset] = usePref<'final_1080' | 'draft_720'>('outputPreset', 'final_1080');
   const [error, setError] = useState<ReturnType<typeof describe> | null>(null);
@@ -57,7 +59,7 @@ export function Create({ ctx }: { ctx: AppCtx }) {
     api<Snapshot>('GET', `/v1/projects/${ctx.projectId}`)
       .then((s) => {
         const order = s.editDefaults?.takes;
-        const card = (a: Snapshot['assets'][number]): Card => ({ key: a.id, assetId: a.id, name: names[a.id] ?? basename(a.relativePath), kind: a.kind, status: 'ready', selected: !order || order.includes(a.id), durationUs: a.probe.durationUs });
+        const card = (a: Snapshot['assets'][number]): Card => ({ key: a.id, assetId: a.id, name: names[a.id] ?? a.name ?? basename(a.relativePath), kind: a.kind, status: 'ready', selected: !order || order.includes(a.id), durationUs: a.probe.durationUs, tags: a.tags });
         const t = s.assets.filter((a) => a.pool === 'takes').map(card);
         if (order) t.sort((x, y) => (order.indexOf(x.assetId!) + 1 || 1e9) - (order.indexOf(y.assetId!) + 1 || 1e9));
         setTakes(t);
@@ -125,6 +127,18 @@ export function Create({ ctx }: { ctx: AppCtx }) {
     }
   }
 
+  /** F07: tags say what a B-roll shows; it is placed only where one matches a spoken word. */
+  async function saveTags(c: Card, tags: string[]) {
+    if (!ctx.projectId || !c.assetId) return;
+    setError(null);
+    try {
+      const r = await api<{ tags: string[] }>('PATCH', `/v1/projects/${ctx.projectId}/assets/${encodeURIComponent(c.assetId)}`, { tags });
+      setBroll((cs) => cs.map((x) => (x.key === c.key ? { ...x, tags: r.tags } : x)));
+    } catch (e) {
+      setError(describe(e));
+    }
+  }
+
   const pick = async (pool: Pool) => addPaths(await bridge().pickFiles(pool), pool);
   const drop = async (e: DragEvent, pool: Pool) => {
     e.preventDefault();
@@ -140,11 +154,10 @@ export function Create({ ctx }: { ctx: AppCtx }) {
     setError(null);
     try {
       const id = await ensureProject();
-      let brandProfileId: string | null = null;
-      if (useBrand && ctx.brand) {
-        await api('POST', `/v1/projects/${id}/brands`, ctx.brand);
-        brandProfileId = ctx.brand.id;
-      }
+      // The library brand's latest version is stored in the project; the plan then names that exact version.
+      const brand = ctx.brands.find((b) => b.id === ctx.brandId);
+      if (brand) await api('POST', `/v1/projects/${id}/brands`, { brandId: brand.id, version: brand.version });
+      const brandProfileId = brand?.id ?? null;
       await api('POST', `/v1/projects/${id}/edit-defaults`, {
         settings: effectiveSettings(edits.settings, ctx.caps),
         targetSeconds: t.seconds,
@@ -179,7 +192,7 @@ export function Create({ ctx }: { ctx: AppCtx }) {
         </h2>
         {!ctx.projectFolder && !ctx.projectId && <ProjectFolder ctx={ctx} />}
         <Pool title="Takes" pool="takes" cards={takes} setCards={setTakes} onPick={() => pick('takes')} onDrop={(e) => drop(e, 'takes')} ordered />
-        <Pool title="Own B-roll" pool="broll" cards={broll} setCards={setBroll} onPick={() => pick('broll')} onDrop={(e) => drop(e, 'broll')} />
+        <Pool title="Own B-roll" pool="broll" cards={broll} setCards={setBroll} onPick={() => pick('broll')} onDrop={(e) => drop(e, 'broll')} onTags={saveTags} />
         {ctx.projectId && (
           <button type="button" className="btn btn--quiet" onClick={newProject}>
             New project
@@ -238,10 +251,15 @@ export function Create({ ctx }: { ctx: AppCtx }) {
         </fieldset>
         <label className="field">
           <span>Brand</span>
-          <select value={useBrand ? 'brand' : ''} onChange={(e) => setUseBrand(e.target.value === 'brand')}>
+          <select value={ctx.brands.some((b) => b.id === ctx.brandId) ? ctx.brandId! : ''} onChange={(e) => ctx.setBrandId(e.target.value || null)}>
             <option value="">None</option>
-            {ctx.brand && <option value="brand">{ctx.brand.name}</option>}
+            {ctx.brands.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name} (v{b.version})
+              </option>
+            ))}
           </select>
+          <span className="hint">Create or edit brands in Settings.</span>
         </label>
         <label className="field is-disabled">
           <span>Reference</span>
@@ -278,7 +296,7 @@ export function Create({ ctx }: { ctx: AppCtx }) {
   );
 }
 
-function Pool(p: { title: string; pool: Pool; cards: Card[]; setCards(f: (c: Card[]) => Card[]): void; onPick(): void; onDrop(e: DragEvent): void; ordered?: boolean }) {
+function Pool(p: { title: string; pool: Pool; cards: Card[]; setCards(f: (c: Card[]) => Card[]): void; onPick(): void; onDrop(e: DragEvent): void; ordered?: boolean; onTags?(c: Card, tags: string[]): void }) {
   const [over, setOver] = useState(false);
   const id = useId();
   return (
@@ -300,7 +318,7 @@ function Pool(p: { title: string; pool: Pool; cards: Card[]; setCards(f: (c: Car
         ) : (
           <ol className="footage-list">
             {p.cards.map((c, i) => (
-              <FootageCard key={c.key} card={c} index={i} count={p.cards.length} ordered={!!p.ordered} set={(next) => p.setCards((cs) => cs.map((x) => (x.key === c.key ? next : x)))} move={(d) => p.setCards((cs) => move(cs, i, d))} />
+              <FootageCard key={c.key} card={c} index={i} count={p.cards.length} ordered={!!p.ordered} set={(next) => p.setCards((cs) => cs.map((x) => (x.key === c.key ? next : x)))} move={(d) => p.setCards((cs) => move(cs, i, d))} onTags={p.onTags && ((tags) => p.onTags!(c, tags))} />
             ))}
           </ol>
         )}
@@ -309,8 +327,10 @@ function Pool(p: { title: string; pool: Pool; cards: Card[]; setCards(f: (c: Car
   );
 }
 
-function FootageCard({ card: c, index, count, ordered, set, move }: { card: Card; index: number; count: number; ordered: boolean; set(c: Card): void; move(d: -1 | 1): void }) {
+function FootageCard({ card: c, index, count, ordered, set, move, onTags }: { card: Card; index: number; count: number; ordered: boolean; set(c: Card): void; move(d: -1 | 1): void; onTags?(tags: string[]): void }) {
   const nameId = useId();
+  const [tags, setTags] = useState((c.tags ?? []).join(', '));
+  useEffect(() => setTags((c.tags ?? []).join(', ')), [c.tags?.join()]);
   const status = c.status === 'importing' ? 'Importing…' : c.status === 'error' ? `Failed: ${c.error ?? ''}` : 'Ready';
   return (
     <li className={c.selected ? 'footage is-selected' : 'footage'} aria-labelledby={nameId}>
@@ -324,6 +344,17 @@ function FootageCard({ card: c, index, count, ordered, set, move }: { card: Card
         <label className="check">
           <input type="checkbox" checked={c.selected} disabled={c.status !== 'ready'} onChange={(e) => set({ ...c, selected: e.target.checked })} /> Use in edit
         </label>
+        {onTags && c.status === 'ready' && (
+          <form className="row" onSubmit={(e) => (e.preventDefault(), onTags(tags.split(',').map((t) => t.trim()).filter(Boolean)))}>
+            <label className="field">
+              <span>Tags (what it shows)</span>
+              <input value={tags} maxLength={400} placeholder="server, network" onChange={(e) => setTags(e.target.value)} />
+            </label>
+            <button type="submit" className="btn btn--quiet btn--sm">
+              Save tags
+            </button>
+          </form>
+        )}
       </div>
       {ordered && (
         <div className="footage__order">
@@ -383,6 +414,7 @@ function ToggleRow({ def, edits, setEdits, ctx }: { def: ToggleDef; edits: EditO
       </p>
       {hasSettings && (
         <div id={`${id}-settings`} className="toggle-row__settings" hidden={!open}>
+          {def.key === 'fillers' && <FillerWords edits={edits} setEdits={setEdits} />}
           {def.key === 'fillers' && (
             <label className="field">
               <span>Strength</span>
@@ -422,5 +454,27 @@ function ToggleRow({ def, edits, setEdits, ctx }: { def: ToggleDef; edits: EditO
         </div>
       )}
     </li>
+  );
+}
+
+/** F04 custom dictionary: words always kept (even if they look like fillers) and words or phrases always cut. */
+function FillerWords({ edits, setEdits }: { edits: EditOptions; setEdits(e: EditOptions): void }) {
+  const dict = edits.settings.fillerDictionary ?? { preserve: [], remove: [] };
+  const set = (k: 'preserve' | 'remove', text: string) => {
+    const next = { ...dict, [k]: text.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 200).map((x) => x.slice(0, 40)) };
+    // Empty lists are sent as such (not omitted), so clearing them also clears the project's stored dictionary.
+    setEdits({ ...edits, settings: { ...edits.settings, fillerDictionary: next } });
+  };
+  return (
+    <div className="row row--top">
+      <label className="field">
+        <span>Always keep (one per line)</span>
+        <textarea rows={2} defaultValue={dict.preserve.join('\n')} onBlur={(e) => set('preserve', e.target.value)} placeholder="like" />
+      </label>
+      <label className="field">
+        <span>Always cut (one per line)</span>
+        <textarea rows={2} defaultValue={dict.remove.join('\n')} onBlur={(e) => set('remove', e.target.value)} placeholder="you know" />
+      </label>
+    </div>
   );
 }

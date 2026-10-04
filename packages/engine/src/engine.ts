@@ -1,10 +1,10 @@
 // Engine: the local job coordinator (PRD §7.2, §8, §13). It owns jobs, state, validation, files and
 // permissions; the director only proposes plans, the renderer only renders validated compiled plans.
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   validate,
   type AssetManifest,
@@ -32,22 +32,28 @@ import {
   OllamaDirector,
   PROMPT_VERSION,
   RulesDirector,
+  brollTags,
   buildPlan,
   detectCandidates,
   directPlan,
+  hookOptionsFor,
   type DirectorAdapter,
   type DirectorContext,
+  type HookOption,
+  type SfxAsset,
   type SpeechInterval,
+  type VoiceAnalysis,
 } from '@takeoff/director';
-import { diskPreflight as mediaDiskPreflight, hashFile, ingest, type DiskPreflight } from '@takeoff/media';
+import { analyzeVoice, diskPreflight as mediaDiskPreflight, hashFile, ingest, type DiskPreflight } from '@takeoff/media';
 import { atomicWrite, canonicalJson, createProject, openProject, resolveUnderRoot, StaleRevisionError, type PlanSnapshot, type ProjectStore } from '@takeoff/project-store';
-import type { RenderArtifact, Renderer, ResolvedAsset, ResolvedFont } from '@takeoff/renderer-api';
+import type { FaceTrack, Rect, RenderArtifact, RenderInput, Renderer, ResolvedAsset, ResolvedFont } from '@takeoff/renderer-api';
+import { BRAND_REF, brandFilePath, brandRef, checkBrand, copyBrandFiles, libraryDir } from './brands.ts';
 import { ProviderBroker, type KeyLookup } from './broker.ts';
 import { EngineError, isAbort, toErrorInfo } from './errors.ts';
 import { toCaptionJson, toSrt, toVtt, writeStems } from './export.ts';
 import { Logger, redact } from './log.ts';
 import { hasCritical, runQa, type OverlayReport } from './qa.ts';
-import { validateAsrConfig, workerTranscriber, type AsrConfig, type Transcriber } from './transcribe.ts';
+import { validateAsrConfig, workerTranscriber, type AsrConfig, type FacesResult, type Transcriber } from './transcribe.ts';
 import { engineCapabilities, type EngineCapabilities } from './capabilities.ts';
 
 export const ENGINE_VERSION = '0.1.0';
@@ -69,7 +75,11 @@ export interface LibraryEntry {
 export interface RendererModule {
   createRenderer(): Renderer | Promise<Renderer>;
   generateLibraryAudio?(outDir: string): Promise<LibraryEntry[]>;
+  /** Dialogue/music/sfx WAVs from the renderer's own mix buses; absent = the engine's plain stems (test renderers). */
+  renderStems?(input: RenderInput, outDir: string, signal?: AbortSignal): Promise<unknown>;
 }
+/** What the engine hands a renderer: the renderer-api input plus the brand logo (renderer-browser reads it). */
+export type EngineRenderInput = RenderInput & { logo?: { path: string; hash: string } };
 /** A renderer may attach its overlay measurements to the artifact; absent = those QA checks are not_run. */
 export type RenderResult = RenderArtifact & { overlayReport?: OverlayReport };
 
@@ -134,14 +144,17 @@ export interface ImportItemResult {
 /** The slice of `@takeoff/renderer-browser` the engine uses (structural: the package is loaded lazily). */
 interface BrowserModule {
   BrowserRenderer: new () => Renderer;
+  renderStems(input: RenderInput, outDir: string, signal?: AbortSignal): Promise<unknown>;
   generateLibraryAudio(outDir: string): Promise<{ items: Array<{ id: string; file: string; kind: 'music' | 'sfx'; category: string; license: string }> }>;
 }
 type BrowserOverlay = { captionBounds: Array<{ captionId: string; rect: { x: number; y: number; w: number; h: number } }>; violations: Array<{ code: string; ref: string }> };
+type BrowserFaces = Array<{ frame: number; rect: Rect }>;
 
 /** Browser renderer overlay measurements in the engine's QA shape. */
-export function overlayFromBrowser(o: BrowserOverlay): OverlayReport {
+export function overlayFromBrowser(o: BrowserOverlay, faces?: BrowserFaces): OverlayReport {
   const v = o.violations;
   return {
+    ...(faces && { faces }),
     captions: o.captionBounds.map((b) => ({ captionId: b.captionId, rect: b.rect })),
     captionFailures: v.filter((x) => x.code === 'caption_overflow').map((x) => ({ captionId: x.ref, code: x.code })),
     visualFailures: v.filter((x) => x.code.startsWith('scene_')).map((x) => ({ visualId: x.ref, code: x.code })),
@@ -165,14 +178,15 @@ export async function loadBrowserRenderer(specifier = RENDERER_BROWSER): Promise
       return {
         id: r.id,
         async render(input, opts) {
-          const a = (await r.render(input, opts)) as RenderArtifact & { overlay?: BrowserOverlay };
-          return { ...a, overlayReport: a.overlay ? overlayFromBrowser(a.overlay) : undefined } as RenderResult;
+          const a = (await r.render(input, opts)) as RenderArtifact & { overlay?: BrowserOverlay; faces?: BrowserFaces };
+          return { ...a, overlayReport: a.overlay ? overlayFromBrowser(a.overlay, a.faces) : undefined } as RenderResult;
         },
       };
     },
     async generateLibraryAudio(outDir) {
       return (await mod.generateLibraryAudio(outDir)).items.map((i) => ({ id: i.id, kind: i.kind, path: i.file, category: i.category, license: i.license }));
     },
+    renderStems: (input, outDir, signal) => mod.renderStems(input, outDir, signal),
   };
 }
 
@@ -196,6 +210,25 @@ interface AssetMeta {
   pool: Pool;
   startUs: number;
   hdr: boolean;
+  /** Original file name (B-roll/music tags come from its words); stored in the project only, never logged. */
+  name?: string;
+  /** User tags (B-roll subjects, music moods); `setAssetTags`. */
+  tags?: string[];
+  /** Library entry the asset was generated from (music mood / SFX category). */
+  libraryId?: string;
+  category?: string;
+}
+/** F08/F06 face tracking: sampled at 5 fps; part of the face cache key with the worker versions. */
+const FACE_SAMPLE_FPS = 5;
+const TAG = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,31}$/u;
+
+/** Visuals whose on-screen words (hook text, scene labels) contain a brand-prohibited phrase (case-insensitive). */
+export function prohibitedVisuals(plan: EditPlan, prohibited: readonly string[]): Array<{ id: Id; locked: boolean }> {
+  const phrases = prohibited.map((p) => p.trim().toLowerCase()).filter(Boolean);
+  if (!phrases.length) return [];
+  const words = (v: EditPlan['visuals'][number]): string[] =>
+    v.kind === 'hook_text' ? [v.text] : v.kind === 'motion_template' ? JSON.stringify(v.params).match(/"(?:[^"\\]|\\.)*"/g)?.map((x) => JSON.parse(x) as string) ?? [] : [];
+  return plan.visuals.filter((v) => words(v).some((t) => phrases.some((p) => t.toLowerCase().includes(p)))).map((v) => ({ id: v.id, locked: v.locked === true }));
 }
 interface TranscriptKey {
   sourceHash: string;
@@ -215,7 +248,9 @@ interface RunState {
   dctx?: DirectorContext;
   revision?: number;
   compiledRef?: string;
-  render?: { ref: string; width: number; height: number; overlay: OverlayReport | null; profile: 'draft' | 'final' };
+  render?: { ref: string; width: number; height: number; overlay: OverlayReport | null; profile: 'draft' | 'final'; faceNote?: string };
+  /** Why face tracking is absent (worker unavailable or failed); QA face_crop reports it. */
+  faceNote?: string;
   qaRef?: string;
   qa?: QAReport;
   exportDir?: string;
@@ -366,6 +401,7 @@ export class Engine {
   #ingests = new Map<string, Promise<{ assetId: Id; reused: boolean }>>();
   #heavy: Promise<unknown> = Promise.resolve();
   #rendererP: Promise<Renderer> | undefined;
+  #moduleP: Promise<RendererModule> | undefined;
 
   private constructor(store: ProjectStore, opts: EngineOptions) {
     this.store = store;
@@ -419,23 +455,55 @@ export class Engine {
     return readLibrary(this.appDataDir);
   }
 
-  /** Brand profiles are versioned files; a plan references one version, so later edits never change old renders. */
-  async saveBrandProfile(profile: BrandProfile): Promise<string> {
-    const v = validate('brand-profile', profile);
-    if (!v.ok) throw new EngineError('invalid_brand', 'the brand profile does not match the schema', 'Fix the highlighted fields and save again.');
-    const rel = `brands/${v.value.id}-v${v.value.version}.json`;
-    await this.#writeRel(rel, JSON.stringify(v.value, null, 2));
-    this.store.setSetting(`brand:${v.value.id}`, rel);
-    return rel;
+  /**
+   * Stores one immutable brand version in the project (and its font/logo files under `brands/files/`, copied from
+   * `filesFrom`, default the app library). A plan references `brands/<id>@<version>`, so later versions never
+   * change an old plan or render. Returns that ref.
+   */
+  async saveBrandProfile(profile: BrandProfile, filesFrom = libraryDir(this.appDataDir)): Promise<string> {
+    const b = checkBrand(profile);
+    copyBrandFiles(b, filesFrom, this.#abs('brands'));
+    try {
+      this.store.putBrandProfile(b);
+    } catch (e) {
+      throw new EngineError('brand_version_exists', `brand ${b.id} version ${b.version} already exists with other content`, 'Save it as a new version.');
+    }
+    this.store.setSetting(`brand:${b.id}`, brandRef(b));
+    return brandRef(b);
   }
+  /** Latest stored version of a brand, as a plan ref. */
   #brandRef(id: string | undefined): string | null {
     if (!id) return null;
-    const rel = this.store.getSetting<string>(`brand:${id}`);
-    if (!rel) throw new EngineError('brand_not_found', 'that brand profile does not exist in this project', 'Create the brand profile first, or run without one.');
-    return rel;
+    const b = this.store.getBrandProfile(id);
+    if (!b) throw new EngineError('brand_not_found', 'that brand profile does not exist in this project', 'Create the brand profile first, or run without one.');
+    return brandRef(b);
   }
-  #brand(rel: string | null): BrandProfile | null {
-    return rel ? (JSON.parse(readFileSync(this.#abs(rel), 'utf8')) as BrandProfile) : null;
+  /** The exact brand version a ref names (immutable), or a legacy brand file. */
+  brand(ref: string | null): BrandProfile | null {
+    if (!ref) return null;
+    const m = BRAND_REF.exec(ref);
+    const b = m ? this.store.getBrandProfile(m[1]!, Number(m[2])) : (JSON.parse(readFileSync(this.#abs(ref), 'utf8')) as BrandProfile);
+    if (!b) throw new EngineError('brand_not_found', 'the brand version this plan uses is missing', 'Save the brand again, or remove it from the edit.');
+    return b;
+  }
+  #brand(ref: string | null): BrandProfile | null {
+    return this.brand(ref);
+  }
+
+  /** F07/F09: user tags on an imported asset (B-roll subjects, music moods). Validated; replaces the old tags. */
+  setAssetTags(assetId: Id, tags: unknown): string[] {
+    const meta = this.#meta(assetId);
+    if (!meta) throw new EngineError('not_found', 'that asset was not found', 'Check the id and try again.');
+    if (!Array.isArray(tags) || tags.length > 20 || !tags.every((t) => typeof t === 'string' && TAG.test(t.trim()))) {
+      throw new EngineError('invalid_tags', 'tags must be at most 20 words or short phrases of 1–32 letters or digits', 'Use plain words such as server or network.');
+    }
+    const clean = [...new Set(tags.map((t: string) => t.trim().toLowerCase()))];
+    this.store.setSetting(`asset:${assetId}`, { ...meta, tags: clean });
+    return clean;
+  }
+  assetMeta(assetId: Id): { pool: Pool; name: string | null; tags: string[] } | undefined {
+    const m = this.#meta(assetId);
+    return m && { pool: m.pool, name: m.name ?? null, tags: m.tags ?? [] };
   }
 
   // ---------- import ----------
@@ -447,7 +515,7 @@ export class Engine {
     // ponytail: one file at a time keeps FFmpeg load bounded; parallelise once a resource budget exists.
     for (const [index, p] of paths.entries()) {
       try {
-        const r = await this.#importOne(this.approvedPath(p), opts.pool, { origin: 'user', license: null }, opts.signal);
+        const r = await this.#importOne(this.approvedPath(p), opts.pool, { origin: 'user', license: null }, opts.signal, { name: basename(p) });
         out.push({ index, assetId: r.assetId, pool: this.#meta(r.assetId)?.pool ?? opts.pool, reused: r.reused });
       } catch (e) {
         if (opts.signal?.aborted) throw e;
@@ -458,7 +526,7 @@ export class Engine {
     return out;
   }
 
-  async #importOne(real: string, pool: Pool, rights: { origin: 'user' | 'generated'; license: string | null }, signal?: AbortSignal): Promise<{ assetId: Id; reused: boolean }> {
+  async #importOne(real: string, pool: Pool, rights: { origin: 'user' | 'generated'; license: string | null }, signal?: AbortSignal, extra: Partial<AssetMeta> = {}): Promise<{ assetId: Id; reused: boolean }> {
     const st = await stat(real).catch(() => null);
     if (!st?.isFile()) throw new EngineError('not_found', 'the file is missing or is not a regular file', 'Choose the file again.');
     const hash = await hashFile(real);
@@ -487,7 +555,7 @@ export class Engine {
       };
       this.store.importAsset(manifest);
       await this.#writeRel(`assets/${id}.json`, JSON.stringify(manifest, null, 2));
-      this.store.setSetting(`asset:${id}`, { pool, startUs: r.probe.startUs, hdr: r.probe.hdr } satisfies AssetMeta);
+      this.store.setSetting(`asset:${id}`, { pool, startUs: r.probe.startUs, hdr: r.probe.hdr, ...extra } satisfies AssetMeta);
       return { assetId: id, reused: false };
     })();
     this.#ingests.set(hash, p);
@@ -505,16 +573,27 @@ export class Engine {
     return this.store.listAssets().filter((m) => this.#meta(m.id)?.pool === pool);
   }
 
-  /** First library track of a kind, imported into the project (engine-owned path, so no picker approval is needed). */
-  async #libraryAsset(kind: 'music' | 'sfx', signal: AbortSignal): Promise<Id | undefined> {
-    const own = this.#pool(kind)[0];
-    if (own) return own.id;
-    const e = this.library().find((x) => x.kind === kind);
-    if (!e) return undefined;
+  /**
+   * F09/F10 candidates: the project's own pool, else every library entry of that kind, imported into the project
+   * (engine-owned path, so no picker approval is needed). Mood/category come from tags or the library entry.
+   */
+  async #audioPool(kind: 'music' | 'sfx', signal: AbortSignal): Promise<Array<{ id: Id; words: string[]; durationUs: number | null }>> {
+    const describe = (m: AssetManifest) => {
+      const meta = this.#meta(m.id)!;
+      const words = [...(meta.category ? [meta.category] : []), ...(meta.tags ?? []), ...brollTags(meta.name ?? '')];
+      return { id: m.id, words, durationUs: m.probe.durationUs };
+    };
+    const own = this.#pool(kind).filter((m) => !this.#meta(m.id)?.libraryId);
+    if (own.length) return own.map(describe);
     const lib = join(this.appDataDir, 'library');
-    const p = resolve(lib, e.path);
-    if (relative(lib, p).startsWith('..')) return undefined;
-    return (await this.#importOne(p, kind, { origin: 'generated', license: e.license }, signal)).assetId;
+    const out: Array<{ id: Id; words: string[]; durationUs: number | null }> = [];
+    for (const e of this.library().filter((x) => x.kind === kind)) {
+      const p = resolve(lib, e.path);
+      if (relative(lib, p).startsWith('..')) continue;
+      const { assetId } = await this.#importOne(p, kind, { origin: 'generated', license: e.license }, signal, { libraryId: e.id, category: e.category, name: basename(p) });
+      out.push(describe(this.store.getAsset(assetId)!));
+    }
+    return out;
   }
 
   // ---------- plan context ----------
@@ -573,6 +652,17 @@ export class Engine {
     if (!head) throw new EngineError('no_plan', 'the project has no plan yet', 'Run Edit Video first.');
     const job = this.#createJob({ schemaVersion: '1.0', stage: 'Build graphics', profile: 'draft', baseRevision: head.revision, idempotencyKey: idempotencyKey ?? `render-${head.revision}-${head.planHash.slice(0, 16)}` });
     return this.#start(job, ['Build graphics', 'Render preview', 'Check quality'], { revision: head.revision });
+  }
+
+  /**
+   * `takeoff render --final`: renders the head plan at the final profile into a recorded `render_final` artifact (plus
+   * its render report) and QA-checks it. An export of the same plan hash reuses it instead of rendering again.
+   */
+  renderFinal(idempotencyKey?: string): Promise<PipelineResult> {
+    const head = this.store.getPlan();
+    if (!head) throw new EngineError('no_plan', 'the project has no plan yet', 'Run Edit Video first.');
+    const job = this.#createJob({ schemaVersion: '1.0', stage: 'Build graphics', profile: 'final', baseRevision: head.revision, idempotencyKey: idempotencyKey ?? `final-${head.revision}-${head.planHash.slice(0, 16)}` });
+    return this.#start(job, ['Build graphics', 'Render preview', 'Check quality'], { revision: head.revision, profile: 'final' });
   }
 
   // ---------- jobs ----------
@@ -783,7 +873,77 @@ export class Engine {
     const takes = order ? order.flatMap((id) => pool.filter((m) => m.id === id)) : pool;
     if (!takes.length) throw new EngineError('no_takes', 'there is no footage in the takes pool', 'Add at least one recording as a take.');
     await this.#preflight(takes.reduce((s, m) => s + (m.probe.durationUs ?? 0) / 1e6, 0));
-    return { takes: takes.map((m) => m.id) };
+    const faceNote = await this.#trackFaces(takes, st);
+    await this.#analyzeVoices(takes, st.signal);
+    return { takes: takes.map((m) => m.id), ...(faceNote && { faceNote }) };
+  }
+
+  /**
+   * F06/F08: the worker's face track per video take, cached by source hash + sampling + worker versions (like
+   * transcripts), so unchanged footage is never re-tracked. Tracking is an enhancement: a missing or failing worker
+   * leaves centre framing and returns why (QA face_crop reports it); it never fails the job.
+   */
+  async #trackFaces(takes: AssetManifest[], st: RunState): Promise<string | undefined> {
+    const t = this.transcriber;
+    if (!t.faces) return 'face tracking is not available in this build';
+    let versions: Record<string, string>;
+    try {
+      versions = (await t.probe()).versions;
+    } catch {
+      return 'the face tracking worker is not set up';
+    }
+    const key = sha(canonicalJson({ sampleFps: FACE_SAMPLE_FPS, detector: 'opencv_haar_frontalface_default', versions }));
+    let failed = 0;
+    for (const m of takes.filter((x) => x.kind === 'video' && x.probe.video)) {
+      st.signal.throwIfAborted();
+      const prev = this.store.getSetting<{ key: string; ref: string }>(`faces:${m.contentHash}`);
+      if (prev?.key === key && existsSync(this.#abs(prev.ref))) continue;
+      const ref = `cache/faces/${m.contentHash}-${key.slice(0, 16)}.json`;
+      await mkdir(dirname(this.#abs(ref)), { recursive: true });
+      try {
+        await this.#serial(() => t.faces!({ videoPath: this.#abs(m.relativePath), outPath: this.#abs(ref), sourceHash: m.contentHash, sampleFps: FACE_SAMPLE_FPS, signal: st.signal }));
+        st.signal.throwIfAborted();
+        this.store.setSetting(`faces:${m.contentHash}`, { key, ref });
+      } catch (e) {
+        if (st.signal.aborted) throw e;
+        failed++;
+      }
+    }
+    if (failed) {
+      st.warnings.push({ code: 'face_tracking_failed', message: `face tracking failed for ${failed} take(s); those use centre framing`, refs: [] });
+      return 'face tracking failed for some takes';
+    }
+    return undefined;
+  }
+
+  /** F11: clipping per take from the source audio, cached by content hash; a failed measurement is simply absent. */
+  async #analyzeVoices(takes: AssetManifest[], signal: AbortSignal): Promise<void> {
+    for (const m of takes.filter((x) => x.probe.audio)) {
+      if (this.store.getSetting(`voice:${m.contentHash}`)) continue;
+      try {
+        const v = await analyzeVoice(this.#abs(m.relativePath), signal);
+        this.store.setSetting(`voice:${m.contentHash}`, { clippingRatio: v.clippingRatio, severe: v.clippingRatio > 0.01 } satisfies VoiceAnalysis);
+      } catch (e) {
+        if (signal.aborted) throw e;
+      }
+    }
+  }
+
+  /** Cached face tracks for the plan's video assets (renderer-api FaceTrack), keyed by asset id. */
+  #faceTracks(plan: EditPlan): Record<Id, FaceTrack> {
+    const out: Record<Id, FaceTrack> = {};
+    for (const a of plan.assets) {
+      const m = this.store.getAsset(a.id);
+      const c = m && this.store.getSetting<{ ref: string }>(`faces:${m.contentHash}`);
+      if (!c) continue;
+      try {
+        const f = JSON.parse(readFileSync(this.#abs(c.ref), 'utf8')) as FacesResult;
+        if (f.track.length) out[a.id] = { width: f.width, height: f.height, track: f.track };
+      } catch {
+        // unreadable cache: centre framing for this asset
+      }
+    }
+    return out;
   }
 
   /** PRD §12: estimated render + temp bytes with 20% headroom, checked before work starts. */
@@ -872,17 +1032,36 @@ export class Engine {
       settings,
       words,
       // The speech-only assembly: deterministic candidates first, so visual work uses stable timing.
-      candidates: words.length ? detectCandidates(words, { fillerStrength: settings.fillerStrength, speech, durationsUs }) : [],
+      candidates: words.length ? detectCandidates(words, { fillerStrength: settings.fillerStrength, fillerDictionary: settings.fillerDictionary, speech, durationsUs }) : [],
       brand: brand && { name: brand.name, hookTone: brand.hookTone, motionIntensity: brand.motionIntensity, glossary: brand.glossary, prohibitedClaims: brand.prohibitedClaims },
     };
     const v = validate('director-request', request);
     if (!v.ok) throw new EngineError('invalid_settings', `settings are invalid (${v.errors.slice(0, 3).map((e) => e.path || '/').join(', ')})`, 'Fix the highlighted settings and run again.');
-    const musicAssetId = settings.music ? await this.#libraryAsset('music', st.signal) : undefined;
-    const sfxAssetId = settings.sfx ? await this.#libraryAsset('sfx', st.signal) : undefined;
+    // F09/F10: candidate tracks and effects (own pool first, else the generated library); the director picks by mood/category.
+    const music = settings.music ? await this.#audioPool('music', st.signal) : [];
+    const sfx = settings.sfx ? await this.#audioPool('sfx', st.signal) : [];
+    const SFX_CATEGORIES = ['ui_click', 'hit', 'whoosh'] as const;
+    const sfxAssets: SfxAsset[] = sfx.flatMap((x) => {
+      const c = SFX_CATEGORIES.find((k) => x.words.includes(k) || x.words.includes(k.replace('_', '')));
+      return c && !brand?.sfx.bannedCategories.includes(c) ? [{ id: x.id, category: c }] : [];
+    });
+    // F07: the user's B-roll pool with tags from file-name words and user tags.
+    const broll = settings.userBroll
+      ? this.#pool('broll').flatMap((m) => (m.kind === 'video' || m.kind === 'image' ? [{ id: m.id, kind: m.kind, tags: brollTags(this.#meta(m.id)?.name ?? '', this.#meta(m.id)?.tags), durationUs: m.probe.durationUs }] : []))
+      : [];
+    const voiceAnalysis = Object.fromEntries(takes.flatMap((m) => {
+      const v = this.store.getSetting<VoiceAnalysis>(`voice:${m.contentHash}`);
+      return v ? [[m.id, v]] : [];
+    }));
     const ref = (id: Id): PlanAssetRef => ({ id, kind: this.store.getAsset(id)!.kind, manifestRef: `assets/${id}.json` });
     const wordAssets = [...new Set(words.map((w) => w.assetId))];
-    const assets = [...(words.length ? wordAssets : takes.filter((m) => m.kind === 'video').map((m) => m.id)), ...[musicAssetId, sfxAssetId].filter((x): x is Id => !!x)].map(ref);
-    const dctx: DirectorContext = { seed: 0, speech, durationsUs, assets, musicAssetId, sfxAssetId };
+    const assets = (words.length ? wordAssets : takes.filter((m) => m.kind === 'video').map((m) => m.id)).map(ref);
+    const dctx: DirectorContext = {
+      seed: 0, speech, durationsUs, assets, voiceAnalysis, broll, sfxAssets,
+      // Brand moods steer the music pick after the brief's own words; banned categories are never offered.
+      brief: [typeof o.brief === 'string' ? o.brief : '', ...(brand?.music.moods ?? [])].join(' ').trim() || undefined,
+      musicTracks: music.filter((x) => !x.words.some((w) => brand?.music.bannedCategories.includes(w))).map((x) => ({ id: x.id, moods: x.words, durationUs: x.durationUs })),
+    };
     return { request, dctx };
   }
 
@@ -923,12 +1102,29 @@ export class Engine {
     if (zoomMaxScale) for (const t of plan.transforms) if (t.kind === 'punch') t.scale = Math.min(t.scale, zoomMaxScale);
     const head = this.store.getPlan();
     plan = mergeLocks(plan, head?.plan);
+    // F17 prohibited claims: a generated hook or scene label with a banned phrase is rejected (left for review).
+    const brand = this.#brand(plan.brandProfileRef);
+    const banned = prohibitedVisuals(plan, brand?.prohibitedClaims ?? []);
+    const drop = new Set(banned.filter((v) => !v.locked).map((v) => v.id));
+    if (banned.length) {
+      plan.visuals = plan.visuals.filter((v) => !drop.has(v.id));
+      plan.audio.sfx = plan.audio.sfx.filter((x) => !x.visualId || !drop.has(x.visualId));
+      plan.reviewMarkers.push({
+        id: 'marker_prohibited_claim', kind: 'unsupported_claim', severity: banned.length > drop.size ? 'critical' : 'warning',
+        message: `${banned.length} hook or graphic label(s) used a phrase this brand prohibits; ${drop.size} removed${banned.length > drop.size ? ', locked ones block rendering until edited' : ''}.`,
+        refs: plan.segments.slice(0, 1).map((x) => x.id),
+      });
+    }
     const report = validatePlan(plan, ctx);
     if (report.errors.length) {
       throw new EngineError('lock_conflict', `locked objects no longer fit the regenerated plan (${report.errors.map((e) => e.code).slice(0, 3).join(', ')})`, 'Unlock the conflicting objects or restore their spans, then run again.');
     }
     st.signal.throwIfAborted();
     const snap = this.store.commitPlan(plan, req.revision, 'system');
+    // F13: up to three verbatim hook options over what the plan keeps, for the review screen to choose from.
+    // hookOptionsFor already drops options with a prohibited phrase (req.brand carries the claims).
+    const options: HookOption[] = req.words.length && plan.settings.textHook ? hookOptionsFor(req, plan) : [];
+    this.store.setSetting('hookOptions', { revision: snap.revision, options });
     this.logger.log('plan', { projectId: this.projectId, jobId: st.jobId, revision: snap.revision, fallbackCount, counts: { warnings: report.warnings.length } });
     return { revision: snap.revision };
   }
@@ -952,8 +1148,13 @@ export class Engine {
     return { compiledRef };
   }
 
+  #module(): Promise<RendererModule> {
+    this.#moduleP ??= (this.opts.loadRenderer ?? loadBrowserRenderer)();
+    this.#moduleP.catch(() => (this.#moduleP = undefined));
+    return this.#moduleP;
+  }
   #renderer(): Promise<Renderer> {
-    this.#rendererP ??= (this.opts.loadRenderer ?? loadBrowserRenderer)().then((m) => m.createRenderer());
+    this.#rendererP ??= this.#module().then((m) => m.createRenderer());
     this.#rendererP.catch(() => (this.#rendererP = undefined));
     return this.#rendererP;
   }
@@ -962,9 +1163,12 @@ export class Engine {
     return bundledFonts();
   }
 
-  /** Renders `revision` to a project-relative path and records it as a job artifact. */
-  async #renderTo(st: RunState, revision: number, rel: string, profile: 'draft' | 'final', kind: string, burnCaptions = true): Promise<NonNullable<RunState['render']>> {
-    const { plan, compiled } = this.#compiledFor(revision, burnCaptions);
+  /**
+   * The full renderer input for a revision: resolved assets (draft proxies), cached face tracks, the plan's exact brand
+   * version with its pinned font files (a missing one falls back to bundled Inter, recorded) and logo. Refuses a plan
+   * whose hook or graphic labels use a phrase the brand prohibits (F17), so such text never reaches a render.
+   */
+  #renderInput(plan: EditPlan, compiled: CompiledTimeline, rendererId: string) {
     const assets: Record<Id, ResolvedAsset & { proxyPath?: string }> = {};
     for (const a of plan.assets) {
       const m = this.store.getAsset(a.id);
@@ -972,35 +1176,91 @@ export class Engine {
       const proxy = `media/derived/${m.contentHash}/proxy.mp4`;
       assets[a.id] = { path: this.#abs(m.relativePath), hash: m.contentHash, manifest: m, ...(m.derived.proxy && existsSync(this.#abs(proxy)) && { proxyPath: this.#abs(proxy) }) };
     }
+    const brand = this.#brand(plan.brandProfileRef);
+    if (brand && prohibitedVisuals(plan, brand.prohibitedClaims).length) {
+      throw new EngineError('prohibited_claim', 'a hook or graphic label uses a phrase this brand prohibits', 'Edit or remove the flagged hook or graphic, then render again.');
+    }
+    const brandDir = this.#abs('brands');
+    const fonts: ResolvedFont[] = [];
+    const fontReport: Array<{ role: string; family: string; sha256: string | null; fallback: 'Inter' | null }> = [];
+    for (const f of brand?.fonts ?? []) {
+      const path = f.assetId ? brandFilePath(brandDir, f.assetId) : null;
+      const bundled = this.fonts().some((x) => x.family === f.family);
+      if (path) fonts.push({ family: f.family, path, hash: f.assetId!.slice(3) });
+      fontReport.push({ role: f.role, family: f.family, sha256: path ? f.assetId!.slice(3) : null, fallback: path || bundled ? null : 'Inter' });
+    }
+    const logoRef = brand ? (brand.logos.find((l) => l.role === 'primary') ?? brand.logos[0]) : undefined;
+    const logoPath = logoRef ? brandFilePath(brandDir, logoRef.assetId) : null;
+    const faceTracks = this.#faceTracks(plan);
+    const input: EngineRenderInput = {
+      compiled, plan, assets, fonts: [...fonts, ...this.fonts()], brand, seed: plan.provenance.seed, versions: { ...VERSIONS, renderer: rendererId },
+      ...(Object.keys(faceTracks).length && { faceTracks }),
+      ...(logoPath && { logo: { path: logoPath, hash: logoRef!.assetId.slice(3) } }),
+    };
+    const report = {
+      brandProfileRef: plan.brandProfileRef, brand, fonts: fontReport,
+      logo: logoRef ? { assetId: logoRef.assetId, drawn: !!logoPath } : null,
+      faceTrackedAssets: Object.keys(faceTracks),
+      faceTrackHashes: faceTrackHashes(faceTracks),
+    };
+    return { input, report };
+  }
+
+  /** Renders `revision` to a project-relative path, records it as a job artifact, and writes its render report beside it. */
+  async #renderTo(st: RunState, revision: number, rel: string, profile: 'draft' | 'final', kind: string, burnCaptions = true): Promise<NonNullable<RunState['render']>> {
+    const { plan, compiled } = this.#compiledFor(revision, burnCaptions);
+    const renderer = await this.#renderer();
+    const { input, report } = this.#renderInput(plan, compiled, renderer.id);
     const outPath = this.#abs(rel);
     await mkdir(dirname(outPath), { recursive: true });
-    const renderer = await this.#renderer();
     const t0 = Date.now();
     const art = (await this.#serial(() => {
       st.signal.throwIfAborted();
-      return renderer.render(
-        { compiled, plan, assets, fonts: this.fonts(), brand: this.#brand(plan.brandProfileRef), seed: plan.provenance.seed, versions: { ...VERSIONS, renderer: renderer.id } },
-        { outPath, profile, signal: st.signal, onProgress: (p) => this.#progress(st.jobId, p.totalFrames ? p.frame / p.totalFrames : null) },
-      );
+      return renderer.render(input, { outPath, profile, signal: st.signal, onProgress: (p) => this.#progress(st.jobId, p.totalFrames ? p.frame / p.totalFrames : null) });
     })) as RenderResult;
     st.signal.throwIfAborted();
     if (resolve(art.path) !== outPath || !existsSync(outPath)) throw new EngineError('render_failed', 'the renderer did not write the requested file', 'Retry the render.');
-    this.store.addArtifact(st.jobId, kind, rel);
+    const video = this.store.addArtifact(st.jobId, kind, rel);
+    const faceNote = report.faceTrackedAssets.length ? undefined : (st.faceNote ?? (this.transcriber.faces ? 'no face was tracked in this footage' : 'face tracking is not available in this build'));
+    const render = { ref: rel, width: art.width, height: art.height, overlay: art.overlayReport ?? null, profile, ...(faceNote && { faceNote }) };
+    // The render snapshot: the frozen brand version, font fallbacks, logo, and what an export may reuse (planHash + hash).
+    const reportRel = rel.replace(/\.mp4$/, '.report.json');
+    await this.#writeRel(reportRel, JSON.stringify({ schemaVersion: '1.0', revision, planHash: compiled.planHash, profile, burnCaptions, video: { ref: rel, sha256: video.hash }, rendererId: renderer.id, versions: art.versions, render, ...report }, null, 2));
+    this.store.addArtifact(st.jobId, 'render_report', reportRel);
     const secs = (Date.now() - t0) / 1000;
     this.logger.log('render', { projectId: this.projectId, jobId: st.jobId, durationMs: Date.now() - t0, fps: secs > 0 ? Math.round(compiled.totalFrames / secs) : null });
-    return { ref: rel, width: art.width, height: art.height, overlay: art.overlayReport ?? null, profile };
+    return render;
+  }
+
+  /** A recorded final render of exactly this compiled plan whose bytes still verify, or null (item: no double final render). */
+  #reusableFinal(planHash: string, burnCaptions: boolean, faces: Record<Id, string>): NonNullable<RunState['render']> | null {
+    for (const j of this.store.listJobs('succeeded').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+      for (const a of j.artifacts.filter((x) => x.kind === 'render_report')) {
+        try {
+          const r = JSON.parse(readFileSync(this.#abs(a.ref), 'utf8'));
+          // Face tracks are render inputs outside the plan: a re-tracked source (new worker) is never reused.
+          if (r.planHash !== planHash || r.profile !== 'final' || r.burnCaptions !== burnCaptions || canonicalJson(r.faceTrackHashes ?? {}) !== canonicalJson(faces)) continue;
+          const art = j.artifacts.find((x) => x.ref === r.video.ref && x.kind === 'render_final');
+          if (art && art.hash === r.video.sha256 && sha256File(this.#abs(art.ref)) === art.hash) return r.render;
+        } catch {
+          // unreadable report or missing file: not reusable
+        }
+      }
+    }
+    return null;
   }
 
   async #renderPreview(st: RunState): Promise<Partial<RunState>> {
-    return { render: await this.#renderTo(st, st.revision!, `renders/${st.jobId}/draft-r${st.revision}.mp4`, 'draft', 'render_draft') };
+    const final = st.opts.profile === 'final';
+    return { render: await this.#renderTo(st, st.revision!, `renders/${st.jobId}/${final ? 'final' : 'draft'}-r${st.revision}.mp4`, final ? 'final' : 'draft', final ? 'render_final' : 'render_draft') };
   }
 
-  async #qa(st: RunState, revision: number, render: NonNullable<RunState['render']>, framesRel: string, burnCaptions = true): Promise<{ report: QAReport; qaRef: string }> {
+  async #qa(st: RunState, revision: number, render: NonNullable<RunState['render']>, framesRel: string, burnCaptions = true, dir = dirname(render.ref)): Promise<{ report: QAReport; qaRef: string }> {
     const { plan, compiled } = this.#compiledFor(revision, burnCaptions);
-    const { report } = await runQa({ renderPath: this.#abs(render.ref), compiled, plan, width: render.width, height: render.height, overlay: render.overlay, framesDir: this.#abs(framesRel), signal: st.signal });
+    const { report } = await runQa({ renderPath: this.#abs(render.ref), compiled, plan, width: render.width, height: render.height, overlay: render.overlay, faceNote: render.faceNote, framesDir: this.#abs(framesRel), signal: st.signal });
     const v = validate('qa-report', report);
     if (!v.ok) throw new EngineError('internal', 'the QA report is malformed', 'Report this with a diagnostic bundle.');
-    const qaRef = `${dirname(render.ref)}/qa-r${revision}.json`;
+    const qaRef = `${dir}/qa-r${revision}.json`;
     await this.#writeRel(qaRef, JSON.stringify(report, null, 2));
     this.store.addArtifact(st.jobId, 'qa_report', qaRef);
     return { report, qaRef };
@@ -1026,7 +1286,8 @@ export class Engine {
       }
       st.signal.throwIfAborted();
       revision = this.store.commitPlan(next, revision, 'system').revision;
-      render = await this.#renderTo(st, revision, `renders/${st.jobId}/draft-r${revision}.mp4`, 'draft', 'render_draft');
+      const fin = render.profile === 'final';
+      render = await this.#renderTo(st, revision, `renders/${st.jobId}/${fin ? 'final' : 'draft'}-r${revision}.mp4`, render.profile, fin ? 'render_final' : 'render_draft');
       ({ report, qaRef } = await this.#qa(st, revision, render, `${dirname(render.ref)}/frames-r${revision}`));
       this.logger.log('repair', { projectId: this.projectId, jobId: st.jobId, retryCount: round + 1, revision });
     }
@@ -1043,11 +1304,14 @@ export class Engine {
   async #export(st: RunState): Promise<Partial<RunState>> {
     const { revision, dest, burnCaptions, profile } = st.opts as { revision: number; dest: string; burnCaptions: boolean; profile: 'draft' | 'final' };
     const base = `exports/${st.jobId}`;
-    const pre = this.#compiledFor(revision, burnCaptions).compiled;
+    const { plan: prePlan, compiled: pre } = this.#compiledFor(revision, burnCaptions);
     // Final video + stems + bundle, roughly 3x the draft budget.
     await this.#preflight((pre.totalFrames * pre.fps.den) / pre.fps.num, 3 * DRAFT_BYTES_PER_SEC);
-    const render = await this.#renderTo(st, revision, `${base}/video.mp4`, profile, profile === 'final' ? 'render_final' : 'render_draft', burnCaptions);
-    const { report, qaRef } = await this.#qa(st, revision, render, `${base}/frames`, burnCaptions);
+    // A final render of exactly this plan (e.g. from `takeoff render --final`) is reused once its bytes verify.
+    const reused = profile === 'final' ? this.#reusableFinal(pre.planHash, burnCaptions, faceTrackHashes(this.#faceTracks(prePlan))) : null;
+    const render = reused ?? (await this.#renderTo(st, revision, `${base}/video.mp4`, profile, profile === 'final' ? 'render_final' : 'render_draft', burnCaptions));
+    if (reused) this.logger.log('render', { projectId: this.projectId, jobId: st.jobId, cacheHit: true });
+    const { report, qaRef } = await this.#qa(st, revision, render, `${base}/frames`, burnCaptions, base);
     // Full QA gates the export: nothing is written to the destination when a critical issue remains.
     if (hasCritical(report)) return { qa: report, qaRef };
 
@@ -1070,11 +1334,16 @@ export class Engine {
         await writeFile(join(work, f), text);
         await writeFile(join(work, 'bundle', f), text);
       }
-      await writeStems(compiled, (id) => {
-        const m = this.store.getAsset(id);
-        if (!m) throw new EngineError('asset_missing', `asset ${id} is not in the project`, 'Relink or re-import the asset.');
-        return { wav: this.#abs(`media/derived/${m.contentHash}/master.wav`), startUs: this.#meta(id)?.startUs ?? 0 };
-      }, join(work, 'stems'), st.signal);
+      // Stems from the renderer's own mix buses (fades, Studio voice, ducking); plain stems only for renderers without them.
+      const mod = await this.#module();
+      if (mod.renderStems) await this.#serial(() => mod.renderStems!(this.#renderInput(plan, compiled, 'stems').input, join(work, 'stems'), st.signal));
+      else {
+        await writeStems(compiled, (id) => {
+          const m = this.store.getAsset(id);
+          if (!m) throw new EngineError('asset_missing', `asset ${id} is not in the project`, 'Relink or re-import the asset.');
+          return { wav: this.#abs(`media/derived/${m.contentHash}/master.wav`), startUs: this.#meta(id)?.startUs ?? 0 };
+        }, join(work, 'stems'), st.signal);
+      }
 
       // Project bundle: plan, transcripts, manifests (project-relative paths only), captions, QA. No originals, no keys.
       await writeFile(join(work, 'bundle', 'plan.json'), JSON.stringify(plan, null, 2));
@@ -1129,12 +1398,13 @@ export class Engine {
 
   /** After a crash: requeue/fail interrupted jobs (store re-verifies checkpoints) and delete every partial file. */
   async recover(): Promise<{ requeued: string[]; failed: string[]; removedPartials: number }> {
+    // Synchronous on purpose: Workspace.open calls this before any job of this process can create a partial.
     const r = this.store.recoverInterruptedJobs();
     let removedPartials = 0;
-    for (const f of await readdir(this.root, { recursive: true })) {
+    for (const f of readdirSync(this.root, { recursive: true })) {
       const name = String(f);
       if (!/\.partial(\.|$)/.test(name.split(sep).pop() ?? '')) continue;
-      await rm(join(this.root, name), { recursive: true, force: true });
+      rmSync(join(this.root, name), { recursive: true, force: true });
       removedPartials++;
     }
     this.logger.log('recover', { projectId: this.projectId, counts: { requeued: r.requeued.length, failed: r.failed.length, removedPartials } });
@@ -1170,6 +1440,9 @@ export async function writeDiagnostics(src: { approvedPath(p: string): string; c
   await writeFile(join(dir, 'logs', 'engine.jsonl'), lines.join('\n') + (lines.length ? '\n' : ''));
   return dir;
 }
+
+/** sha256 of each asset's face track, as recorded in a render report. */
+const faceTrackHashes = (t: Record<Id, FaceTrack>): Record<Id, string> => Object.fromEntries(Object.entries(t).map(([id, x]) => [id, sha(canonicalJson(x))]));
 
 function sha256File(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');

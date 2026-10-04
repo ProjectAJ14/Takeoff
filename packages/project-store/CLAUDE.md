@@ -18,7 +18,8 @@ this package defines no plan, job or transcript type of its own.
 
 Tables: `project` (single row), `assets`, `transcripts` (cache keyed by
 source hash + config hash + model), `plan_revisions`, `jobs`, `artifacts`,
-`events` (append-only), `settings`.
+`events` (append-only), `settings`, `brand_profiles` (migration 2: `(id, version)` key,
+UPDATE/DELETE refused by trigger; `putBrandProfile`, `getBrandProfile(id, version?)`, `listBrandProfiles`).
 
 ## Invariants
 

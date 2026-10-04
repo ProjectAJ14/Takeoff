@@ -36,8 +36,26 @@ export interface TranscribeResult {
   transcript: Transcript;
   speech: SpeechInterval[];
 }
-/** Test seam: the engine talks to ASR only through this. */
+export interface FacesRequest {
+  /** Absolute path of the video (original take). */
+  videoPath: string;
+  /** Absolute output path for the face-track JSON. */
+  outPath: string;
+  sourceHash: string;
+  sampleFps: number;
+  signal?: AbortSignal;
+}
+/** The worker's `faces` output (fits renderer-api `FaceTrack` as is). */
+export interface FacesResult {
+  width: number;
+  height: number;
+  status: 'tracked' | 'multiple_faces' | 'lost' | 'none';
+  track: Array<{ startUs: number; endUs: number; x: number; y: number; w: number; h: number; confidence: number }>;
+}
+/** Test seam: the engine talks to ASR (and the same worker's face tracking) only through this. */
 export interface Transcriber {
+  /** F06/F08 local face tracking; absent = face awareness unavailable (centre framing). */
+  faces?(req: FacesRequest): Promise<FacesResult>;
   probe(): Promise<WorkerProbe>;
   /** Cache key component; must change whenever the transcript for the same audio could change. */
   configHash(config: AsrConfig): Promise<string>;
@@ -131,6 +149,15 @@ export function workerTranscriber(): Transcriber {
       if (!v.ok) throw new EngineError('invalid_transcript', 'the transcribe worker wrote an invalid transcript', 'Update the worker (`uv sync`) and retry.');
       const speech = ((result.speechIntervals as Array<{ startUs: number; endUs: number }>) ?? []).map((s) => ({ assetId: req.assetId, sourceStartUs: s.startUs, sourceEndUs: s.endUs }));
       return { transcript: v.value, speech };
+    },
+    async faces(req) {
+      const args = ['faces', '--video', req.videoPath, '--out', req.outPath, '--sample-fps', String(req.sampleFps), '--source-hash', req.sourceHash];
+      const lines = await runWorker(args, req.signal);
+      if (!lines.some((l) => l.type === 'result')) throw new EngineError('worker_failed', 'face tracking gave no result', 'Retry the stage.');
+      const j = JSON.parse(await readFile(req.outPath, 'utf8')) as FacesResult;
+      // Shape check only; the renderer validates spans, bounds and aspect before use.
+      if (!Number.isSafeInteger(j.width) || !Number.isSafeInteger(j.height) || !Array.isArray(j.track)) throw new EngineError('worker_failed', 'face tracking wrote an invalid file', 'Update the worker (`uv sync`) and retry.');
+      return { width: j.width, height: j.height, status: j.status, track: j.track };
     },
     async downloadModel(model, signal) {
       validateAsrConfig({ model, language: 'auto', glossary: [] });

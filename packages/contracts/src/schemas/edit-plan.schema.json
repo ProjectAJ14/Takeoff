@@ -63,6 +63,12 @@
           "$ref": "common.schema.json#/$defs/relPath"
         },
         {
+          "description": "One immutable brand version in the project store: brands/<id>@<version>",
+          "type": "string",
+          "maxLength": 160,
+          "pattern": "^brands/[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}@[1-9][0-9]{0,8}$"
+        },
+        {
           "type": "null"
         }
       ]
@@ -252,7 +258,36 @@
         },
         "hook": {
           "$ref": "#/$defs/hookSetting"
+        },
+        "fillerDictionary": {
+          "$ref": "#/$defs/fillerDictionary"
         }
+      }
+    },
+    "fillerDictionary": {
+      "description": "F04 custom words. preserve always wins over remove and over built-in fillers.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preserve",
+        "remove"
+      ],
+      "properties": {
+        "preserve": {
+          "$ref": "#/$defs/fillerDictionaryList"
+        },
+        "remove": {
+          "$ref": "#/$defs/fillerDictionaryList"
+        }
+      }
+    },
+    "fillerDictionaryList": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
       }
     },
     "fillerStrength": {
@@ -761,6 +796,12 @@
             "split"
           ]
         },
+        "reason": {
+          "description": "Why this B-roll was placed (matched tags); ids and words only, never paths.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
         "evidenceIds": {
           "$ref": "common.schema.json#/$defs/idList"
         },
@@ -1129,7 +1170,8 @@
             "low_confidence_crop",
             "visual_unavailable",
             "orphaned_anchor",
-            "unsupported_claim"
+            "unsupported_claim",
+            "source_clipping"
           ]
         },
         "severity": {

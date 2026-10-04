@@ -347,6 +347,11 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     t.add_argument("--asset-id")
     t.add_argument("--source-hash")
+    fc = sub.add_parser("faces")
+    fc.add_argument("--video", required=True)
+    fc.add_argument("--out", required=True)
+    fc.add_argument("--sample-fps", type=float, default=5.0)
+    fc.add_argument("--source-hash")
     sub.add_parser("probe")
     d = sub.add_parser("download-model")
     d.add_argument("--model", required=True)
@@ -362,6 +367,12 @@ def main(argv: list[str] | None = None) -> int:
             write_atomic(args.out, transcript)
             emit({"type": "result", "out": args.out, "sourceHash": transcript["sourceHash"],
                   "configHash": transcript["configHash"], "speechIntervals": speech})
+        elif args.cmd == "faces":
+            from .faces import faces
+
+            track = faces(args.video, args.sample_fps, args.source_hash)
+            write_atomic(args.out, track)
+            emit({"type": "result", "out": args.out, "status": track["status"], "segments": len(track["track"])})
         elif args.cmd == "probe":
             emit(probe())
         else:

@@ -13,6 +13,7 @@ import type {
   PunchTransform,
   ReviewMarker,
   Segment,
+  SfxCategory,
   SfxCue,
   Visual,
 } from '@takeoff/contracts';
@@ -23,6 +24,7 @@ import {
   isTerminal,
   norm,
   orderWords,
+  preservedWordIds,
   type SpeechInterval,
   type Word,
 } from './detectors.ts';
@@ -36,8 +38,42 @@ export interface DirectorContext {
   durationsUs?: Record<Id, number>;
   /** Plan asset refs; default `assets/<id>.json` per word asset. */
   assets?: PlanAssetRef[];
+  /** Legacy single music asset; used when `musicTracks` is absent. */
   musicAssetId?: Id;
+  /** Legacy single SFX asset, used as a whoosh; `sfxAssets` takes precedence. */
   sfxAssetId?: Id;
+  /** F11 analysis per source asset; clipping above 0.1 % (or `severe`) adds a `source_clipping` marker. */
+  voiceAnalysis?: Record<Id, VoiceAnalysis>;
+  /** F07 user B-roll pool, tags from filename words + user tags (see `brollTags`). */
+  broll?: BrollAsset[];
+  /** F09 licensed library/user tracks with mood tags. */
+  musicTracks?: MusicTrack[];
+  /** F10 licensed effects, one category each. */
+  sfxAssets?: SfxAsset[];
+  /** Creative brief; only its mood keywords are read (music). */
+  brief?: string;
+}
+
+export interface VoiceAnalysis {
+  /** Fraction of clipped samples, 0..1 (0.001 = 0.1 %). */
+  clippingRatio: number;
+  severe?: boolean;
+}
+export interface BrollAsset {
+  id: Id;
+  kind: 'video' | 'image';
+  tags: string[];
+  /** Required for video (the span must stay inside the source); ignored for images. */
+  durationUs?: number | null;
+}
+export interface MusicTrack {
+  id: Id;
+  moods: string[];
+  durationUs?: number | null;
+}
+export interface SfxAsset {
+  id: Id;
+  category: SfxCategory;
 }
 
 /** The only things a model may decide. Every id must already exist in the product-made plan inputs. */
@@ -63,8 +99,18 @@ const ZOOM_WINDOW_US = 30_000_000;
 const ZOOMS_PER_WINDOW = 4;
 const ZOOM_SCALES = [1.08, 1.12, 1.15];
 const HOOK_US = 3_000_000;
-const HOOK_MAX_WORDS = 8;
 const VISUAL_MAX_US = 10_000_000;
+const CLIPPING_RATIO = 0.001;
+const BROLL_MIN_US = 1_500_000;
+const BROLL_MAX_US = 4_000_000;
+const BROLL_GAP_US = 8_000_000;
+const BROLL_OPENING_US = 1_500_000;
+const SFX_GAP_US = 5_000_000;
+const DEFAULT_MOOD = 'calm';
+/** Brief words that name a mood without using a track's own tag. */
+const MOOD_SYNONYMS: Record<string, string> = { relaxed: 'calm', chill: 'calm', gentle: 'calm', energetic: 'upbeat', fun: 'upbeat', happy: 'upbeat', hype: 'upbeat', focused: 'focus', study: 'focus', tutorial: 'focus' };
+/** Filename words that say nothing about the content. */
+const GENERIC_TAGS = new Set(['img', 'image', 'screenshot', 'screen', 'shot', 'video', 'clip', 'broll', 'final', 'copy', 'edit', 'take', 'mov', 'mp4', 'png', 'jpg', 'jpeg']);
 
 const STOP = new Set(['the', 'a', 'an', 'it', 'this', 'that', 'he', 'she', 'they', 'we', 'you', 'i', 'my', 'your', 'our', 'its', 'their']);
 const LEAD_IN = new Set(['so', 'basically', 'actually', 'well', 'okay', 'ok', 'like', 'and', 'but', 'now']);
@@ -84,6 +130,20 @@ function framesFloor(us: number, fps: { num: number; den: number }) {
 }
 function framesCeil(us: number, fps: { num: number; den: number }) {
   return Math.ceil((us * fps.num) / (fps.den * 1e6));
+}
+
+/** Simple suffix-strip stem, so "servers" matches "server" and "caching" matches "cach(e)". */
+const stem = (t: string) => {
+  const x = norm(t).replace(/'s$/, '');
+  if (x.length <= 3) return x;
+  return x.endsWith('ies') ? `${x.slice(0, -3)}y` : x.replace(/(?<!s)s$/, '').replace(/(ing|ed|e)$/, '');
+};
+
+/** B-roll tags from a file name (extension and generic words dropped) plus user tags, lower-case, unique. */
+export function brollTags(fileName: string, userTags: string[] = []): string[] {
+  const base = fileName.replace(/^.*[\\/]/, '').replace(/\.[^.]*$/, '');
+  const words = [...base.replace(/([a-z])([A-Z])/g, '$1 $2').split(/[^\p{L}\p{N}]+/u), ...userTags.flatMap((t) => t.split(/\s+/))];
+  return [...new Set(words.map((w) => w.toLowerCase()).filter((w) => w.length >= 3 && !/^\d+$/.test(w) && !GENERIC_TAGS.has(w)))];
 }
 
 /** Sentences by terminal punctuation, never spanning assets. */
@@ -201,23 +261,66 @@ function groupCaptionWords(words: Word[]): Word[][] {
   return groups;
 }
 
+/** A hook never ends on one of these; the phrase is cut before them instead. */
+const HOOK_FUNCTION = new Set([
+  'to', 'a', 'an', 'the', 'that', 'how', 'and', 'or', 'but', 'of', 'for', 'with', 'in', 'on', 'at', 'by', 'from', 'as', 'is',
+  'are', 'was', 'my', 'your', 'our', 'their', 'its', 'this', 'which', 'who', 'what', 'why', 'when', 'where', 'if', 'so', 'because', 'than', 'then',
+]);
+/** Clause/phrase starts: a long sentence is cut before one of these. */
+const HOOK_BOUNDARY = new Set([
+  'and', 'but', 'or', 'so', 'because', 'which', 'who', 'when', 'while', 'where', 'why', 'if', 'then', 'that', 'to', 'of', 'for',
+  'with', 'in', 'on', 'at', 'by', 'from', 'using', 'via', 'through', 'into', 'about', 'than',
+]);
+/** Qualifiers whose loss would make the hook a stronger claim than the speaker made. */
+const QUALIFIERS = new Set([...PRIORITY, 'most', 'some', 'sometimes', 'usually', 'often', 'may', 'might', 'can', 'could', 'if', 'almost', 'mostly', 'probably']);
+const INTENT = [['i', 'want', 'to'], ["i'm", 'going', 'to'], ['im', 'going', 'to'], ["we're", 'going', 'to'], ['let', 'me'], ["i'll"], ["we'll"]];
+const INTENT_VERBS = new Set(['explain', 'show', 'tell', 'talk', 'cover', 'walk']);
+const INTENT_TAIL = new Set(['you', 'about', 'through']);
+const HOOK_MAX_WORDS = 9;
+
 function hookTitle(sentence: Word[]): HookOption | null {
   let ws = sentence.filter((w) => !isHesitation(w));
-  while (ws.length && LEAD_IN.has(norm(ws[0]!.text))) ws = ws.slice(1);
-  ws = ws.slice(0, HOOK_MAX_WORDS);
-  let text = ws.map((w) => w.text).join(' ').replace(/[,.;:!?]+$/u, '').trim();
-  if (text.length > 120) text = text.slice(0, 120).replace(/\s+\S*$/, '');
-  return text ? { text, evidenceIds: ws.map((w) => w.id) } : null;
+  const n = () => ws.map((w) => norm(w.text));
+  // Leading discourse markers and stated intent ("So today I want to explain how …" → "how …").
+  while (ws.length && (LEAD_IN.has(n()[0]!) || n()[0] === 'today')) ws = ws.slice(1);
+  const intent = INTENT.find((p) => p.every((t, i) => n()[i] === t));
+  if (intent) {
+    ws = ws.slice(intent.length);
+    if (INTENT_VERBS.has(n()[0]!)) ws = ws.slice(1);
+    while (ws.length && INTENT_TAIL.has(n()[0]!)) ws = ws.slice(1);
+  }
+  let cut = ws.length;
+  if (ws.length > HOOK_MAX_WORDS) {
+    // Cut after the last clause punctuation, else before the last clause/phrase start, within the limit.
+    const t = n();
+    const punct = ws.slice(0, HOOK_MAX_WORDS).findLastIndex((w, i) => i >= 1 && /[,;:]["')\]]*$/.test(w.text));
+    const boundary = t.slice(0, HOOK_MAX_WORDS + 1).findLastIndex((x, i) => i >= 2 && HOOK_BOUNDARY.has(x));
+    cut = punct >= 0 ? punct + 1 : boundary;
+    if (cut < 0) return null;
+    // Dropping a qualifier or negation would overstate the claim.
+    if (t.slice(cut).some((x) => QUALIFIERS.has(x))) return null;
+  }
+  ws = ws.slice(0, cut);
+  while (ws.length && HOOK_FUNCTION.has(norm(ws[ws.length - 1]!.text))) ws = ws.slice(0, -1);
+  if (ws.length < 2) return null;
+  const text = ws.map((w) => w.text).join(' ').replace(/[,.;:!?]+$/u, '').trim();
+  return text && text.length <= 120 ? { text, evidenceIds: ws.map((w) => w.id) } : null;
 }
 
 /** Up to three verbatim-derived titles: opening sentence, first fact-bearing sentence, closing sentence. */
+/** Sign-offs are never a hook ("Thanks for watching."). */
+const SIGN_OFF = /^(thanks?|thank you|see you|bye|goodbye|subscribe|that's (it|all))\b/;
+
 function hookOptions(sentences: Word[][], glossary: Set<string>, prohibited: string[]): HookOption[] {
+  sentences = sentences.filter((s) => !SIGN_OFF.test(s.map((w) => norm(w.text)).join(' ')));
   const factual = sentences.find((s) => s.some((w) => isNumberish(w) || glossary.has(norm(w.text))));
   const out: HookOption[] = [];
   for (const s of [sentences[0], factual, sentences[sentences.length - 1]]) {
     const o = s && hookTitle(s);
     const banned = o && prohibited.some((p) => o.text.toLowerCase().includes(p.toLowerCase()));
-    if (o && !banned && !out.some((x) => x.text === o.text)) out.push(o);
+    // Grounding guard: the title is exactly its evidence words, so no number or claim comes from elsewhere.
+    const grounded = o && o.text === o.evidenceIds.map((id) => s.find((w) => w.id === id)?.text ?? '\u0000').join(' ').replace(/[,.;:!?]+$/u, '');
+    if (o && grounded && !banned && !out.some((x) => x.text === o.text)) out.push(o);
   }
   return out;
 }
@@ -306,10 +409,15 @@ function matchTemplate(s: Word[], prev: Word[] | undefined, next: Word[][]): Tem
 /** Candidates the plan acts on: the request's own, else detected here; only kinds whose toggle is on. */
 export function candidatesFor(req: DirectorRequest, ctx: DirectorContext = {}): DirectorCandidate[] {
   const { settings } = req;
+  const dict = settings.fillerDictionary;
   const all = req.candidates.length
     ? req.candidates
-    : detectCandidates(req.words, { fillerStrength: settings.fillerStrength, speech: ctx.speech, durationsUs: ctx.durationsUs });
-  return all.filter((c) => (c.kind === 'filler' ? settings.fillers : c.kind === 'silence' ? settings.silence : settings.badTakes));
+    : detectCandidates(req.words, { fillerStrength: settings.fillerStrength, fillerDictionary: dict, speech: ctx.speech, durationsUs: ctx.durationsUs });
+  // F04: a custom preserve entry wins even over candidates the caller detected without the dictionary.
+  const preserved = preservedWordIds(req.words, dict?.preserve);
+  return all.filter((c) =>
+    c.kind === 'filler' ? settings.fillers && !c.wordIds.some((id) => preserved.has(id)) : c.kind === 'silence' ? settings.silence : settings.badTakes,
+  );
 }
 
 /** Deterministic plan for any request. `choices` come from a model and are filtered to known ids here. */
@@ -359,7 +467,13 @@ export function buildPlan(
   let segments = ws.length ? buildSegments(ws, removals, durations, ctx.speech) : [];
 
   // F14 target length: drop whole low-priority middle sentences after cleanup; never the first or last.
-  const sentences = splitSentences(ws);
+  // A ≤2-word sentence ("Nothing.") is the payoff of the one before it: they are dropped together, never split.
+  const sentences = splitSentences(ws).reduce<Word[][]>((acc, s) => {
+    const prev = acc.at(-1);
+    if (prev && s.length <= 2 && prev[0]!.assetId === s[0]!.assetId) prev.push(...s);
+    else acc.push([...s]);
+    return acc;
+  }, []);
   const limit =
     output.lengthPolicy !== 'none' && output.targetFrames
       ? { us: (output.targetFrames * fps.den * 1e6) / fps.num, hard: output.lengthPolicy === 'hard_max' }
@@ -405,7 +519,10 @@ export function buildPlan(
         id: 'marker_duration_conflict',
         kind: 'duration_conflict',
         severity: limit.hard ? 'critical' : 'warning',
-        message: `Retained speech is ${(totalUs(segments) / 1e6).toFixed(1)} s; target is ${(limit.us / 1e6).toFixed(1)} s. Revise the target or remove content.`,
+        // A critical marker tells the compiler this over-length draft is a declared conflict (export stays blocked).
+        message: limit.hard
+          ? `Essential opening and closing speech needs ${framesFloor(totalUs(segments), fps)} frames (${(totalUs(segments) / 1e6).toFixed(1)} s); the hard maximum is ${output.targetFrames} frames (${(limit.us / 1e6).toFixed(1)} s). Revise the target or unlock selections.`
+          : `Retained speech is ${(totalUs(segments) / 1e6).toFixed(1)} s; target is ${(limit.us / 1e6).toFixed(1)} s. Revise the target or remove content.`,
         refs: segments.map((s) => s.id),
       });
     }
@@ -495,6 +612,7 @@ export function buildPlan(
   // F15 motion templates: only on a deterministic trigger.
   // One animated layer at a time (PRD §10): a template starts after the hook and any earlier template end.
   let busyUntilUs = visuals.length ? HOOK_US : 0;
+  const motionSpans: Array<[number, number]> = [];
   if (settings.motionGraphics) {
     keptSentences.forEach((s, i) => {
       const m = matchTemplate(s, keptSentences[i - 1], keptSentences.slice(i + 1));
@@ -506,6 +624,7 @@ export function buildPlan(
       if (startT.start < busyUntilUs) return;
       const durUs = Math.min(Math.max(endUs - startT.start, ZOOM_HOLD_US), VISUAL_MAX_US, Math.max(total - startT.start, 1));
       busyUntilUs = startT.start + durUs;
+      motionSpans.push([startT.start, startT.start + durUs]);
       visuals.push({
         id: `motion_${pad4(visuals.length + 1)}`,
         kind: 'motion_template',
@@ -521,34 +640,116 @@ export function buildPlan(
     });
   }
 
-  // F09/F10: only with a caller-provided licensed asset.
+  // F07 own B-roll: ≥1 exact (stemmed) tag match in a retained sentence, else nothing. Never in the opening,
+  // never over a motion template, ≤1 per 8 s, 1.5–4 s inside its sentence.
+  const brollUsed: BrollAsset[] = [];
+  if (settings.userBroll && ctx.broll?.length) {
+    let lastStart = -Infinity;
+    for (const s of keptSentences) {
+      if (visuals.length >= 100) break;
+      const stems = s.map((w) => stem(w.text));
+      let best: { a: BrollAsset; hits: string[] } | null = null;
+      for (const a of ctx.broll) {
+        if (brollUsed.includes(a) || (a.kind === 'video' && !a.durationUs)) continue;
+        const tags = [...new Set(a.tags.filter((t) => !STOP.has(norm(t)) && !HOOK_FUNCTION.has(norm(t))).map(stem).filter((t) => t.length >= 3))];
+        const hits = tags.filter((t) => stems.includes(t));
+        if (hits.length && (!best || hits.length > best.hits.length)) best = { a, hits };
+      }
+      if (!best) continue;
+      const anchor = s[stems.findIndex((t) => best.hits.includes(t))]!;
+      const t0 = out.get(anchor.id)!;
+      const room = Math.min(out.get(s[s.length - 1]!.id)!.end, total) - t0.start;
+      // A motion template starting later in the sentence shortens the B-roll to end before it (never overlaps).
+      const nextMotion = Math.min(Infinity, ...motionSpans.filter(([a]) => a > t0.start).map(([a]) => a));
+      const durUs = Math.min(BROLL_MAX_US, room, nextMotion - t0.start, best.a.kind === 'video' ? best.a.durationUs! : Infinity);
+      if (t0.start < BROLL_OPENING_US || t0.start < lastStart + BROLL_GAP_US || durUs < BROLL_MIN_US) continue;
+      if (motionSpans.some(([a, b]) => t0.start < b && a < t0.start + durUs)) continue;
+      lastStart = t0.start;
+      brollUsed.push(best.a);
+      const strong = best.hits.length >= 2;
+      const hitWords = s.filter((w, i) => best.hits.includes(stems[i]!));
+      visuals.push({
+        id: `broll_${pad4(visuals.length + 1)}`,
+        kind: 'broll',
+        segmentId: t0.segmentId,
+        anchor: { wordId: anchor.id, edge: 'start', offsetFrames: 0 },
+        durationFrames: Math.max(1, framesFloor(durUs, fps)),
+        assetId: best.a.id,
+        sourceStartUs: 0,
+        sourceEndUs: durUs,
+        layout: best.a.kind === 'image' && strong ? 'full' : 'inset',
+        reason: `User B-roll tags match spoken words: ${best.hits.join(', ')}`.slice(0, 200),
+        evidenceIds: [...new Set(hitWords.map((w) => w.id))],
+        fallback: 'presenter_only',
+        locked: false,
+      });
+    }
+  }
+
+  // F09 music: a licensed track picked by mood from the brief (default calm), spanning the timeline with fades.
+  let musicId: Id | undefined;
+  if (settings.music && ctx.musicTracks?.length) {
+    const briefWords = (ctx.brief ?? '').toLowerCase().split(/[^\p{L}]+/u);
+    const moods = new Set(ctx.musicTracks.flatMap((t) => t.moods.map((m) => m.toLowerCase())));
+    const wanted = briefWords.map((w) => (moods.has(w) ? w : MOOD_SYNONYMS[w])).find((m) => m && moods.has(m)) ?? DEFAULT_MOOD;
+    const fits = (t: MusicTrack) => (t.durationUs ?? 0) >= total;
+    const mood = ctx.musicTracks.filter((t) => t.moods.some((m) => m.toLowerCase() === wanted));
+    const pool = mood.length ? mood : ctx.musicTracks;
+    musicId = (pool.find(fits) ?? pool[0]!).id;
+  } else if (settings.music) musicId = ctx.musicAssetId;
   const music =
-    settings.music && ctx.musicAssetId && totalFrames > 0
+    musicId && totalFrames > 0
       ? {
-          assetId: ctx.musicAssetId,
+          assetId: musicId,
           startFrame: 0,
           durationFrames: totalFrames,
           gainDb: -18,
           duckUnderDialogue: true,
-          fadeInFrames: Math.min(15, Math.floor(totalFrames / 4)),
-          fadeOutFrames: Math.min(30, Math.floor(totalFrames / 4)),
+          fadeInFrames: Math.min(framesCeil(500_000, fps), Math.floor(totalFrames / 4)),
+          fadeOutFrames: Math.min(framesCeil(1_000_000, fps), Math.floor(totalFrames / 4)),
         }
       : null;
+
+  // F10 SFX: one per meaningful visual event — a hit on the hook, a whoosh on each motion template — ≤1 per 5 s.
   const sfx: SfxCue[] = [];
-  if (settings.sfx && ctx.sfxAssetId) {
-    for (const v of visuals) {
-      if (v.kind !== 'motion_template') continue;
-      sfx.push({ id: `sfx_${pad4(sfx.length + 1)}`, assetId: ctx.sfxAssetId, anchor: v.anchor, category: 'whoosh', gainDb: -12, visualId: v.id, locked: false });
+  if (settings.sfx) {
+    const byCategory = (c: SfxCategory) => ctx.sfxAssets ? ctx.sfxAssets.find((x) => x.category === c)?.id : c === 'whoosh' ? ctx.sfxAssetId : undefined;
+    let last = -Infinity;
+    const events = visuals
+      .filter((v) => v.kind === 'hook_text' || v.kind === 'motion_template')
+      .map((v) => ({ v, at: out.get(v.anchor.wordId)?.start ?? 0, category: (v.kind === 'hook_text' ? 'hit' : 'whoosh') as SfxCategory }))
+      .sort((a, b) => a.at - b.at);
+    for (const { v, at, category } of events) {
+      const assetId = byCategory(category);
+      if (!assetId || at < last + SFX_GAP_US) continue;
+      last = at;
+      sfx.push({ id: `sfx_${pad4(sfx.length + 1)}`, assetId, anchor: v.anchor, category, gainDb: -12, visualId: v.id, locked: false });
     }
   }
 
+  // F11: severe source clipping is flagged for an original/processed comparison.
+  let clip = 0;
+  for (const assetId of [...new Set(segments.map((g) => g.assetId))]) {
+    const va = ctx.voiceAnalysis?.[assetId];
+    if (!va || !(va.severe || va.clippingRatio > CLIPPING_RATIO)) continue;
+    reviewMarkers.push({
+      id: `marker_clipping_${pad4(++clip)}`,
+      kind: 'source_clipping',
+      severity: 'warning',
+      message: 'Severe clipping in the source; compare original and processed',
+      refs: segments.filter((g) => g.assetId === assetId).map((g) => g.id),
+    });
+  }
+
   const assetIds = [...new Set(ws.map((w) => w.assetId))];
-  const assets: PlanAssetRef[] = ctx.assets ?? [
-    ...assetIds.map((id) => ({ id, kind: 'video' as const, manifestRef: `assets/${id}.json` })),
-    ...[music?.assetId, sfx.length ? ctx.sfxAssetId : undefined]
-      .filter((id): id is Id => !!id)
-      .map((id) => ({ id, kind: 'audio' as const, manifestRef: `assets/${id}.json` })),
+  const used: PlanAssetRef[] = [
+    ...brollUsed.map((b) => ({ id: b.id, kind: b.kind, manifestRef: `assets/${b.id}.json` })),
+    ...[music?.assetId, ...sfx.map((x) => x.assetId)].filter((id): id is Id => !!id).map((id) => ({ id, kind: 'audio' as const, manifestRef: `assets/${id}.json` })),
   ];
+  const base: PlanAssetRef[] = ctx.assets ?? assetIds.map((id) => ({ id, kind: 'video' as const, manifestRef: `assets/${id}.json` }));
+  // Chosen B-roll, music and SFX join the caller's asset list when it does not already name them.
+  const assets = [...base];
+  for (const a of used) if (!assets.some((x) => x.id === a.id)) assets.push(a);
 
   return {
     schemaVersion: '1.0',

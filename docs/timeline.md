@@ -89,8 +89,7 @@ path.
 | `emphasis_word_missing` | A caption emphasises a word it doesn't show |
 | `limit_exceeded` | A punch scale is above `min(1.25, limits.maxPunchScale)`, a crop rect leaves the frame, or a gain is outside `[minGainDb, maxGainDb]` (default `[−60, 12]`) |
 | `track_exceeds_timeline` | A visual, punch, music cue or sfx falls outside `[0, totalFrames)` or is empty |
-| `hard_max_exceeded` | `lengthPolicy` is `hard_max` and `totalFrames > targetFrames` |
-| `locked_duration_conflict` | Same as above, but the locked segments alone already need more frames than the target allows |
+| `hard_max_exceeded` | `lengthPolicy` is `hard_max`, `totalFrames > targetFrames`, and the conflict is not declared (see `locked_duration_conflict` below) |
 
 ### Warnings (a draft is still allowed)
 
@@ -101,6 +100,7 @@ Warnings travel into `timeline.warnings`.
 | `uncertain_retake` | A decision has `action: "review"` |
 | `orphaned_anchor` | An anchored visual, punch or sfx names a word that isn't in its segment, or a crop names a missing segment. The object is left out of the timeline, never moved to a guessed word |
 | `segment_below_one_frame` | A segment rounds to zero frames |
+| `locked_duration_conflict` | `lengthPolicy` is `hard_max`, `totalFrames > targetFrames`, and either the locked segments alone need more frames than the target allows, or the plan carries a `critical` `duration_conflict` marker (the director could not fit without cutting the essential opening or closing). The draft is allowed and longer; `isExportBlocking(issue)` returns true for this code, so a final export must not use it |
 | `soft_target_missed` | `lengthPolicy` is `soft_target` and the miss is greater than both 10% of the target and 2 s, tested exactly in integers |
 | `<review marker kind>` | Each plan `reviewMarkers` entry is copied as a warning with its own `kind` as the code |
 

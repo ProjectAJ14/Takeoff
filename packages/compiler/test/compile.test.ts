@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validate, type EditPlan } from '@takeoff/contracts';
-import { compile, CompileError, framesToSamples, frameToUs, merge, outputToSource, planHash, sourceToOutput, subtract, usToFrames, validatePlan } from '../src/index.ts';
+import { compile, CompileError, isExportBlocking, framesToSamples, frameToUs, merge, outputToSource, planHash, sourceToOutput, subtract, usToFrames, validatePlan } from '../src/index.ts';
 import { examplePlan, exampleCtx, manifest } from './helpers.ts';
 
 const codes = (plan: unknown, ctx = exampleCtx()) => validatePlan(plan, ctx);
@@ -76,7 +76,7 @@ test('hard errors: PRD 9.2', async (t) => {
     ['speed change', (p) => (p.segments[0]!.speed = { num: 2, den: 1 }), 'speed_unsupported'],
     ['duplicate id', (p) => (p.captions[1]!.id = 'caption_01'), 'duplicate_id'],
     ['hard max exceeded', (p) => (p.output.targetFrames = 60), 'hard_max_exceeded'],
-    ['locked speech over hard max', (p) => ((p.output.targetFrames = 60), (p.segments[0]!.locked = true)), 'locked_duration_conflict'],
+    ['declared conflict that is only a warning-level marker', (p) => ((p.output.targetFrames = 60), p.reviewMarkers.push({ id: 'm1', kind: 'duration_conflict', severity: 'warning', message: 'x', refs: [] })), 'hard_max_exceeded'],
   ];
   for (const [name, mutate, code] of cases) {
     await t.test(name, () => {
@@ -152,4 +152,23 @@ test('regression: soft target tolerance is exactly 10% (not rounded up) when abo
   assert.deepEqual(validatePlan(p, wide).warnings.map((w) => w.code), ['soft_target_missed']);
   p.output.targetFrames = 602; // miss 60 <= 60.2
   assert.deepEqual(validatePlan(p, wide).warnings, []);
+});
+
+test('F14: essential speech over a hard max is a longer draft with an export-blocking conflict', () => {
+  const locked = examplePlan();
+  locked.output.targetFrames = 60;
+  locked.segments[0]!.locked = true;
+  const declared = examplePlan();
+  declared.output.targetFrames = 60;
+  declared.reviewMarkers.push({ id: 'marker_duration_conflict', kind: 'duration_conflict', severity: 'critical', message: 'needs 90 frames', refs: ['speech_01'] });
+  for (const p of [locked, declared]) {
+    const r = validatePlan(p, exampleCtx());
+    assert.deepEqual(r.errors, []);
+    const c = r.warnings.find((w) => w.code === 'locked_duration_conflict');
+    assert.ok(c && isExportBlocking(c));
+    assert.equal(compile(p, exampleCtx()).totalFrames, 90, 'draft compiles longer than the maximum');
+  }
+  // Ordinary warnings never block export.
+  assert.equal(isExportBlocking({ code: 'soft_target_missed' }), false);
+  assert.equal(isExportBlocking({ code: 'duration_conflict' }), false);
 });

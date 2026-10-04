@@ -5,7 +5,8 @@ from the installed packages. PRD §15 requires every dependency, model, font and
 binary to be recorded before it ships.
 
 The repository commits no third-party binaries, model weights or fonts. Nothing
-is redistributed yet, because there is no app build or installer. Rendered
+is redistributed yet: the desktop app builds from source, but there is no
+installer or package. Rendered
 videos do embed third-party font glyphs and Takeoff's own generated audio; see
 [Content embedded in renders](#content-embedded-in-renders). The
 "Redistributed?" column says what would ship in a packaged app. A row marked
@@ -21,10 +22,10 @@ from a file inspected here. Confirm those rows before release.
 | fast-uri | 3.1.8 | BSD-3-Clause | ajv dependency | Yes, with ajv | `node_modules/fast-uri/package.json`, `LICENSE` |
 | json-schema-traverse | 1.0.0 | MIT | ajv dependency | Yes, with ajv | `node_modules/json-schema-traverse/package.json`, `LICENSE` |
 | require-from-string | 2.0.2 | MIT | ajv dependency | Yes, with ajv | `node_modules/require-from-string/package.json`, `license` |
-| react | 19.3.0 | MIT | UI (app not built yet) | Yes, when the app ships | `node_modules/react/package.json`, `LICENSE` |
-| react-dom | 19.3.0 | MIT | UI (app not built yet) | Yes, when the app ships | `node_modules/react-dom/package.json`, `LICENSE` |
+| react | 19.3.0 | MIT | Desktop app UI (`packages/app`) | Yes, when the app ships | `node_modules/react/package.json`, `LICENSE` |
+| react-dom | 19.3.0 | MIT | Desktop app UI (`packages/app`) | Yes, when the app ships | `node_modules/react-dom/package.json`, `LICENSE` |
 | scheduler | 0.28.0 | MIT | react-dom dependency | Yes, with react-dom | `node_modules/scheduler/package.json` |
-| lucide-react | 1.52.0 | ISC | UI icons (app not built yet) | Yes, when the app ships | `node_modules/lucide-react/package.json`, `LICENSE` |
+| lucide-react | 1.52.0 | ISC | Desktop app icons | Yes, when the app ships | `node_modules/lucide-react/package.json`, `LICENSE` |
 | @fontsource/inter | 5.3.0 | OFL-1.1 (font) | App chrome font, bundled locally with no CDN. Also the default caption and graphics face in rendered videos (Inter 600/800 woff2, served to the sandboxed overlay page by `@takeoff/renderer-browser`) | Yes, with OFL text | `package.json` `license`; `LICENSE` says "SIL Open Font License, Version 1.1" |
 | @fontsource/archivo | 5.3.0 | OFL-1.1 (font) | App chrome font | Yes, with OFL text | Same as above |
 | @fontsource/jetbrains-mono | 5.3.0 | OFL-1.1 (font) | App chrome monospace font | Yes, with OFL text | Same as above |
@@ -39,14 +40,14 @@ from a file inspected here. Confirm those rows before release.
 | @types/react | 19.3.0 | MIT | Types | No | `package.json`, `LICENSE` |
 | @types/react-dom | 19.3.0 | MIT | Types | No | `package.json`, `LICENSE` |
 | csstype | 3.2.3 | MIT | @types/react dependency | No | `package.json` |
-| vite | 8.3.2 | MIT | UI bundler (app not built yet) | No (build tool) | `node_modules/vite/package.json`, `LICENSE.md` |
+| vite | 8.3.2 | MIT | Bundles the desktop app's renderer (`packages/app/scripts/build.ts`) | No (build tool) | `node_modules/vite/package.json`, `LICENSE.md` |
 | lightningcss (+ `lightningcss-darwin-arm64`) | 1.33.0 | MPL-2.0 | vite CSS transform | No (build tool). If it is ever shipped, MPL-2.0 file-level source terms apply | `node_modules/lightningcss/package.json` |
 | source-map-js | 1.2.2 | BSD-3-Clause | vite dependency | No | `package.json` |
 | @vitejs/plugin-react | 6.1.1 | MIT | vite React plugin | No | `package.json`, `LICENSE` |
-| electron | 44.5.1 | MIT (npm wrapper and `dist/LICENSE`) | Desktop shell (app in progress). Its install script is allowed in root `package.json` `allowScripts` | Yes, when the app ships. The binary in `node_modules/electron/dist/` bundles Chromium, FFmpeg and other components listed in `dist/LICENSES.chromium.html`; **verify** those when packaging | `node_modules/electron/package.json`, `LICENSE`, `dist/LICENSE`, `dist/LICENSES.chromium.html` |
+| electron | 44.5.1 | MIT (npm wrapper and `dist/LICENSE`) | Desktop shell (`packages/app`). Its install script is allowed in root `package.json` `allowScripts` | Yes, when the app ships. The binary in `node_modules/electron/dist/` bundles Chromium, FFmpeg and other components listed in `dist/LICENSES.chromium.html`; **verify** those when packaging | `node_modules/electron/package.json`, `LICENSE`, `dist/LICENSE`, `dist/LICENSES.chromium.html` |
 | @electron-internal/extract-zip | 1.0.5 | BSD-2-Clause | electron installer | No | `package.json` |
 | esbuild (+ `@esbuild/darwin-arm64`) | 0.28.2 | MIT | Bundles the overlay scene runtime (`packages/renderer-browser/src/runtime.ts` plus the renderer-api scene kit) into an IIFE at render time with `buildSync`; a runtime dependency of `@takeoff/renderer-browser`. Built with `legalComments: 'none'`; the bundle contains only Takeoff code | Yes, if the renderer ships as is (it bundles at runtime) | `package.json`, `LICENSE.md`; `@esbuild/darwin-arm64/package.json` |
-| playwright, playwright-core | 1.63.0 | Apache-2.0 | Drives the headless Chromium that renders overlays (`@takeoff/renderer-browser`); the engine's capability check calls `chromium.executablePath()` | Not yet decided. If shipped, include `NOTICE` and `ThirdPartyNotices.txt` | `package.json`, `LICENSE`, `NOTICE`, `ThirdPartyNotices.txt` |
+| playwright, playwright-core | 1.63.0 | Apache-2.0 | Drives the headless Chromium that renders overlays (`@takeoff/renderer-browser`); the engine's capability check resolves the headless shell's path through `playwright-core`'s browser registry | Not yet decided. If shipped, include `NOTICE` and `ThirdPartyNotices.txt` | `package.json`, `LICENSE`, `NOTICE`, `ThirdPartyNotices.txt` |
 
 Transitive npm packages in `node_modules`, summarised from each package's
 `package.json`:
@@ -69,7 +70,7 @@ Downloaded by `npx playwright install chromium` into the user cache
 | Component | Version | License | How used | Redistributed? | Evidence |
 |---|---|---|---|---|---|
 | Chrome Headless Shell (Chromium), Playwright revision 1243 | 153.0.8010.12 | BSD-3-Clause (Chromium), plus bundled third-party notices | Launched headless by the overlay renderer for every render | No | `node_modules/playwright-core/browsers.json`; `chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/LICENSE.headless_shell` |
-| Chrome for Testing (Chromium), Playwright revision 1243 | 153.0.8010.12 | BSD-3-Clause (Chromium), plus bundled third-party notices (**verify**: notices not inspected here) | Not launched; the engine's capability check looks for this binary | No | `npx playwright install --dry-run chromium`; `chromium-1243/chrome-mac-arm64/` |
+| Chrome for Testing (Chromium), Playwright revision 1243 | 153.0.8010.12 | BSD-3-Clause (Chromium), plus bundled third-party notices (**verify**: notices not inspected here) | Installed alongside the headless shell; Takeoff neither launches nor checks it | No | `npx playwright install --dry-run chromium`; `chromium-1243/chrome-mac-arm64/` |
 | Playwright FFmpeg, revision 1011 | 1011 | **verify** (an FFmpeg build; license not inspected here) | Installed by `npx playwright install chromium`; Takeoff does not use it (it spawns the system FFmpeg) | No | `npx playwright install --dry-run chromium-headless-shell`; `~/Library/Caches/ms-playwright/ffmpeg-1011` |
 
 ## System FFmpeg
@@ -109,6 +110,7 @@ redistributed.
 | idna | 3.20 | BSD-3-Clause | httpx dependency | No | `METADATA` |
 | click | 8.5.0 | BSD-3-Clause | Dependency | No | `METADATA` |
 | typing-extensions | 4.16.0 | PSF-2.0 | Dependency | No | `METADATA` |
+| opencv-python-headless | 4.14.0.94 (pinned `>=4.10,<5`) | Apache-2.0 (`LICENSE.txt`); `LICENSE-3RD-PARTY.txt` lists the bundled libraries. The macOS wheel's `cv2/.dylibs/` includes FFmpeg libraries (LGPL) and `libx264`/`libx265` (GPL) — **verify** | Face tracking (`faces` command): Haar cascade detection on frames the system FFmpeg extracts. The bundled FFmpeg is not used | No (installed by `uv sync`) | `opencv_python_headless-4.14.0.94.dist-info/METADATA` (`License: Apache 2.0`), `LICENSE.txt`, `LICENSE-3RD-PARTY.txt`; `cv2/.dylibs/` |
 | colorama | 0.4.6 | BSD-3-Clause (**verify**: not installed here, Windows-only marker) | tqdm/click on Windows | No | `uv.lock` (`sys_platform == 'win32'`) |
 
 ## Models
@@ -117,6 +119,8 @@ redistributed.
 |---|---|---|---|---|---|
 | Systran faster-whisper weights (`tiny`, `base`, `small`, `large-v3` cached locally) | Hugging Face snapshot | MIT (**verify**: per the Systran model cards and OpenAI Whisper weights; no license file in the cached snapshot) | ASR. Loaded with `local_files_only=True`. Default `--model base`; tests use `tiny` | No. Weights live in the user's Hugging Face cache and are fetched only by `download-model --allow-network` | `~/.cache/huggingface/hub/models--Systran--faster-whisper-*` (contents: `config.json`, `model.bin`, `tokenizer.json`, `vocabulary.*`) |
 
+| OpenCV Haar cascade `haarcascade_frontalface_default.xml` (bundled in opencv-python-headless) | As shipped in 4.14.0.94 | Intel License Agreement for Open Source Computer Vision Library (BSD-3-Clause style), Copyright (C) 2000 Intel Corporation | Frontal-face detector for face tracking; loaded from OpenCV's own data folder, nothing downloaded | No | The file's header comment in `cv2/data/` |
+
 ## Content embedded in renders
 
 | Component | Version | License | How used | Redistributed? | Evidence |
@@ -124,6 +128,11 @@ redistributed.
 | Takeoff generated music and SFX library (`bed_calm`, `bed_pulse`, `bed_bright`, `sfx_ui_click`, `sfx_hit`, `sfx_whoosh`) | `library.json` version 1 | Takeoff original, generated (`LIBRARY_LICENSE`). Synthesised by `generateLibraryAudio` from fixed FFmpeg `lavfi` recipes (`sine`, seeded `anoisesrc`); no third-party recording is sampled | Music beds and sound effects mixed into exports when F09/F10 are on | Generated on the user's machine by the starter pack into `<app data>/library`; not committed. Exports that use it contain it | `packages/renderer-browser/src/library.ts` |
 | Inter (via @fontsource/inter) | 5.3.0 | OFL-1.1 | Default caption, hook and motion-graphics face; glyphs are rasterised into rendered frames | Rendered pixels only; OFL-1.1 places no restriction on output documents | `node_modules/@fontsource/inter/LICENSE` |
 | Inter 400/700, Archivo 700, JetBrains Mono 400 (@fontsource) | 5.3.0 | OFL-1.1 | Passed to the renderer as pinned fonts (`bundledFonts`); used only when a brand profile names one of these families | Same as above | `packages/engine/src/engine.ts` `bundledFonts` |
+
+User content is not Takeoff's to license: a brand's font and logo files
+(`takeoff brand`, the brand editor) and the user's own B-roll, music and SFX are
+copied into the brand library or project and rendered as supplied. The CLI
+records a font's license as `user supplied`.
 
 ## Not yet used
 

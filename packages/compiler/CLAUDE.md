@@ -29,10 +29,15 @@ Plan, transcript, manifest, patch and timeline shapes come from `@takeoff/contra
   `impossible_range`, `source_bounds`, `word_unresolved`, `word_outside_segment`,
   `segment_unresolved`, `caption_word_removed`, `emphasis_word_missing`,
   `track_exceeds_timeline`, `limit_exceeded`, `duplicate_id`, `speed_unsupported`,
-  `hard_max_exceeded`, `locked_duration_conflict`.
+  `hard_max_exceeded` (over a hard max with no declared essential-speech conflict).
   Warnings (draft allowed, carried in the timeline): `orphaned_anchor` (object left
   out), `uncertain_retake`, `soft_target_missed`, `segment_below_one_frame`, and each
   plan review marker by its kind.
+- `locked_duration_conflict` is a warning that blocks only final export
+  (`isExportBlocking(issue)`): over a hard max when locked speech alone exceeds it, or
+  the plan carries a `critical` `duration_conflict` marker (the director could not fit
+  without cutting essential opening/closing speech). PRD F14: a longer draft, never a
+  falsely compliant export.
 - Assets fit their role (`asset_unresolved` otherwise): segments and decisions use
   video or audio, music and sfx use audio, B-roll uses video or image. An image has
   no duration, so it never carries a source span that skips the bounds check.

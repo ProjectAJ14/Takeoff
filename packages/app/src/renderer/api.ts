@@ -6,7 +6,7 @@ export interface Bridge {
   apiBase: string;
   token: string;
   pickFolder(): Promise<string | null>;
-  pickFiles(kind: 'takes' | 'broll'): Promise<string[]>;
+  pickFiles(kind: 'takes' | 'broll' | 'font' | 'logo'): Promise<string[]>;
   dropFiles(files: File[], kind: 'takes' | 'broll'): Promise<string[]>;
   revealInFolder(path?: string): Promise<boolean>;
   setProviders(projectId: string, policy: unknown): Promise<{ policy?: any; error?: ErrorInfo }>;
@@ -83,6 +83,9 @@ export interface AssetView {
   pool: string | null;
   probe: { durationUs: number | null };
   derived: { proxy: string | null };
+  /** Original file name and user tags (engine asset meta). */
+  name: string | null;
+  tags: string[];
 }
 export interface ArtifactView {
   id: string;
@@ -106,6 +109,9 @@ export interface Snapshot {
   latestJob: Job | null;
   artifacts: ArtifactView[];
   editDefaults: EditDefaultsView | null;
+  /** F13: up to three verbatim hook options for the head plan. */
+  hookOptions: Array<{ text: string; evidenceIds: string[] }>;
+  brands: Array<{ id: string; version: number; name: string }>;
 }
 export interface SystemInfo {
   diskFreeBytes: number | null;

@@ -6,6 +6,7 @@ import {
   commonSchema,
   validate,
   type AssetManifest,
+  type BrandProfile,
   type CreateJobRequest,
   type EditPlan,
   type ErrorInfo,
@@ -256,6 +257,40 @@ export class ProjectStore {
   getTranscript(sourceHash: Sha256, configHash: Sha256, model: string): Transcript | undefined {
     const row = this.db.prepare('SELECT transcript FROM transcripts WHERE source_hash = ? AND config_hash = ? AND model = ?').get(sourceHash, configHash, model) as Row | undefined;
     return row ? JSON.parse(row.transcript) : undefined;
+  }
+
+  // ---------- brand profiles (F17) ----------
+
+  /**
+   * Stores one immutable brand version. Re-saving identical content is a no-op; different content under an
+   * existing (id, version) throws, so a plan's `brands/<id>@<version>` always means the same profile.
+   */
+  putBrandProfile(profile: BrandProfile): BrandProfile {
+    const b = mustValidate('brand-profile', profile);
+    const json = canonicalJson(b);
+    this.tx(() => {
+      const row = this.db.prepare('SELECT json FROM brand_profiles WHERE id = ? AND version = ?').get(b.id, b.version) as Row | undefined;
+      if (row && row.json !== json) throw new Error(`brand ${b.id} version ${b.version} already exists with other content`);
+      if (!row) {
+        this.db.prepare('INSERT INTO brand_profiles (id, version, json, created_at) VALUES (?, ?, ?, ?)').run(b.id, b.version, json, now());
+        this.appendEvent('brand_saved', { brandId: b.id, version: b.version });
+      }
+    });
+    return b;
+  }
+
+  /** A brand version, or the latest version when `version` is omitted. */
+  getBrandProfile(id: string, version?: number): BrandProfile | undefined {
+    const row = (version === undefined
+      ? this.db.prepare('SELECT json FROM brand_profiles WHERE id = ? ORDER BY version DESC LIMIT 1').get(id)
+      : this.db.prepare('SELECT json FROM brand_profiles WHERE id = ? AND version = ?').get(id, version)) as Row | undefined;
+    return row ? JSON.parse(row.json) : undefined;
+  }
+
+  /** Latest version of each brand. */
+  listBrandProfiles(): BrandProfile[] {
+    const rows = this.db.prepare('SELECT json FROM brand_profiles b WHERE version = (SELECT MAX(version) FROM brand_profiles WHERE id = b.id) ORDER BY id').all() as Row[];
+    return rows.map((r) => JSON.parse(r.json));
   }
 
   // ---------- plan revisions ----------

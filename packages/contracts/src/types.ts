@@ -80,6 +80,12 @@ export interface Settings {
   /** null = automatic length. */
   targetSeconds?: number | null;
   hook?: HookSetting;
+  /** F04: preserve always wins; remove adds candidates. ≤200 entries each, ≤40 chars. */
+  fillerDictionary?: FillerDictionary;
+}
+export interface FillerDictionary {
+  preserve: string[];
+  remove: string[];
 }
 export type BooleanSettingKey = {
   [K in keyof Settings]-?: Settings[K] extends boolean ? K : never;
@@ -176,6 +182,8 @@ export interface BrollVisual extends VisualBase {
   sourceStartUs: number;
   sourceEndUs: number;
   layout: 'full' | 'inset' | 'split';
+  /** Why it was placed (matched tags). */
+  reason?: string;
 }
 export interface HookTextVisual extends VisualBase {
   kind: 'hook_text';
@@ -245,7 +253,8 @@ export type ReviewMarkerKind =
   | 'low_confidence_crop'
   | 'visual_unavailable'
   | 'orphaned_anchor'
-  | 'unsupported_claim';
+  | 'unsupported_claim'
+  | 'source_clipping';
 export interface ReviewMarker {
   id: Id;
   kind: ReviewMarkerKind;
@@ -266,6 +275,7 @@ export interface EditPlan {
   settings: Settings;
   assets: PlanAssetRef[];
   transcriptRef: RelPath | null;
+  /** A project-relative file, or one stored brand version `brands/<id>@<version>`. */
   brandProfileRef: RelPath | null;
   styleProfileRef: RelPath | null;
   decisions: Decision[];

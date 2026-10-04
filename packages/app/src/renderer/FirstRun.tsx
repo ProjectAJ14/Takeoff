@@ -2,10 +2,10 @@
 // a project folder, and an optional brand profile that can be skipped without penalty.
 import { useState } from 'react';
 import { Download, FolderOpen, HardDrive } from 'lucide-react';
-import type { BrandProfile, CaptionTemplate } from '@takeoff/contracts';
 import { api, bridge, describe } from './api.ts';
 import type { AppCtx } from './App.tsx';
-import { CAPTION_STYLES, formatBytes, type FeatureStatus } from './logic.ts';
+import { formatBytes, type FeatureStatus } from './logic.ts';
+import { BrandEditor } from './Brand.tsx';
 import { ErrorNote, Label } from './ui.tsx';
 
 const STATUS_WORD: Record<FeatureStatus, string> = { available: 'Available', experimental: 'Experimental', unavailable: 'Unavailable' };
@@ -144,77 +144,6 @@ export function ProjectFolder({ ctx }: { ctx: AppCtx }) {
   );
 }
 
-function BrandForm({ ctx }: { ctx: AppCtx }) {
-  const b = ctx.brand;
-  const [name, setName] = useState(b?.name ?? '');
-  // Brand colours are the user's output palette (rendered video), not chrome tokens.
-  const [primary, setPrimary] = useState(b?.palette.find((p) => p.role === 'primary')?.color ?? '#FFFFFF');
-  const [highlight, setHighlight] = useState(b?.captionStyle.highlightColor ?? '#FFD60A');
-  const [template, setTemplate] = useState<CaptionTemplate>(b?.captionStyle.template ?? 'restrained');
-  const [glossary, setGlossary] = useState(b?.glossary.join(', ') ?? '');
-  const [saved, setSaved] = useState(false);
-  const save = () => {
-    const profile: BrandProfile = {
-      schemaVersion: '1.0',
-      id: 'brand',
-      version: (b?.version ?? 0) + 1,
-      name: name.trim(),
-      palette: [{ role: 'primary', color: primary.toUpperCase() }, { role: 'highlight', color: highlight.toUpperCase() }],
-      fonts: [{ role: 'caption', family: 'Inter', assetId: null, license: 'OFL-1.1' }],
-      logos: [],
-      captionStyle: { template, highlightColor: highlight.toUpperCase(), positionPolicy: 'safe_bottom' },
-      hookTone: 'plain',
-      glossary: glossary.split(',').map((g) => g.trim()).filter(Boolean).slice(0, 200),
-      prohibitedClaims: [],
-      motionIntensity: 'restrained',
-      safeLayouts: ['full'],
-      music: { moods: [], bannedCategories: [] },
-      sfx: { bannedCategories: [] },
-      ctaTemplates: [],
-      aspectPresets: [{ width: 1080, height: 1920 }],
-      provenance: { source: 'manual', sourceUrl: null, createdAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z') },
-    };
-    ctx.setBrand(profile);
-    setSaved(true);
-  };
-  return (
-    <form className="form" onSubmit={(e) => (e.preventDefault(), save())}>
-      <label className="field">
-        <span>Brand name</span>
-        <input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <div className="row row--top">
-        <label className="field">
-          <span>Primary colour</span>
-          <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Caption highlight</span>
-          <input type="color" value={highlight} onChange={(e) => setHighlight(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Caption style</span>
-          <select value={template} onChange={(e) => setTemplate(e.target.value as CaptionTemplate)}>
-            {CAPTION_STYLES.map((s) => (
-              <option key={s} value={s}>
-                {s[0]!.toUpperCase() + s.slice(1)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className="field">
-        <span>Glossary (comma-separated product and brand names)</span>
-        <input value={glossary} onChange={(e) => setGlossary(e.target.value)} placeholder="Flutter, Dio" />
-      </label>
-      <div className="row">
-        <button type="submit" className="btn btn--ghost">Save brand</button>
-        {saved && <span role="status" className="muted">Saved. Pick it in the Output column.</span>}
-      </div>
-    </form>
-  );
-}
-
 export function FirstRun({ ctx, onDone }: { ctx: AppCtx; onDone(): void }) {
   return (
     <div className="firstrun">
@@ -248,8 +177,8 @@ export function FirstRun({ ctx, onDone }: { ctx: AppCtx; onDone(): void }) {
         <h2 id="brand-h" className="card__head">
           Brand profile <Label>Optional</Label>
         </h2>
-        <p className="muted">Colours, caption style and glossary for your captions and hooks. Skipping changes nothing about the edit.</p>
-        <BrandForm ctx={ctx} />
+        <p className="muted">Colours, font, logo, caption style, hook tone, glossary and prohibited claims for your video. Skipping changes nothing about the edit.</p>
+        <BrandEditor ctx={ctx} brand={null} onSaved={(b) => ctx.setBrandId(b.id)} />
       </section>
       <div className="row row--end">
         <button type="button" className="btn btn--brand" onClick={onDone}>

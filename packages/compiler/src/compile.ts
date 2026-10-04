@@ -364,8 +364,12 @@ function analyze(input: unknown, ctx: PlanContext): ValidationReport & { timelin
   const target = p.output.targetFrames;
   if (target !== null && p.output.lengthPolicy === 'hard_max' && totalFrames > target) {
     const lockedFrames = usToFrames(p.segments.filter((g) => g.locked).reduce((n, g) => n + BigInt(g.sourceEndUs - g.sourceStartUs), 0n), fps);
-    if (lockedFrames > target) err('locked_duration_conflict', `locked speech needs ${lockedFrames} frames; hard maximum is ${target}`, ...p.segments.filter((g) => g.locked).map((g) => g.id));
-    else err('hard_max_exceeded', `timeline is ${totalFrames} frames; hard maximum is ${target}`);
+    // Essential speech that cannot fit (locked by the user, or declared by the director with a critical
+    // duration_conflict marker) yields a longer draft with an explicit conflict; final export stays blocked.
+    const declared = p.reviewMarkers.some((r) => r.kind === 'duration_conflict' && r.severity === 'critical');
+    if (lockedFrames > target || declared) {
+      warn('locked_duration_conflict', `essential speech needs ${totalFrames} frames (${lockedFrames} locked); hard maximum is ${target}`, ...p.segments.filter((g) => g.locked).map((g) => g.id));
+    } else err('hard_max_exceeded', `timeline is ${totalFrames} frames; hard maximum is ${target}`);
   }
   if (target !== null && p.output.lengthPolicy === 'soft_target') {
     // PRD F14: ±10% or ±2 s, whichever is greater. Exact integer test; rounding 10% up would admit a miss.
@@ -375,6 +379,10 @@ function analyze(input: unknown, ctx: PlanContext): ValidationReport & { timelin
 
   return errors.length ? { errors, warnings } : { errors, warnings, timeline: tl };
 }
+
+/** Warnings that allow a draft but block a final export (PRD F14: never a falsely compliant export). */
+const EXPORT_BLOCKING = new Set(['locked_duration_conflict']);
+export const isExportBlocking = (issue: Pick<Issue, 'code'>): boolean => EXPORT_BLOCKING.has(issue.code);
 
 /** PRD 9.2 rules. Errors block render; warnings allow a draft and travel into the compiled timeline. */
 export function validatePlan(plan: unknown, ctx: PlanContext): ValidationReport {

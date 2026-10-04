@@ -36,6 +36,7 @@ Tables in `project.db`:
 | `artifacts` | Job artifacts |
 | `events` | The append-only event log |
 | `settings` | Key → JSON value |
+| `brand_profiles` | One row per brand version, keyed by `(id, version)` (migration 2). Triggers reject UPDATE and DELETE |
 | `schema_migrations` | Applied migration versions |
 
 ## Revisions, undo, redo and revert
@@ -112,12 +113,17 @@ After a crash, `recoverInterruptedJobs()` handles every job still in `running`:
   exist under the project root at its `relativePath`.
 - `putTranscript` / `getTranscript` store validated transcripts by source hash,
   config hash and model.
+- `putBrandProfile(profile)` validates a `brand-profile` and stores that
+  version. Saving identical content again is a no-op; different content under an
+  existing `(id, version)` throws, so `brands/<id>@<version>` always means the
+  same profile. `getBrandProfile(id, version?)` returns that version, or the
+  latest; `listBrandProfiles()` returns the latest version of each brand.
 - `recordProviderReceipt(receipt)` validates a `provider-receipt` for this
   project and appends it as a `provider_receipt` event.
 - `appendEvent` / `listEvents` work on the `events` table, where triggers reject
   UPDATE and DELETE. The store writes these event types: `asset_imported`,
-  `plan_revision`, `job_created`, `job_state`, `job_recovered` and
-  `provider_receipt`. Event data carries ids, revisions and hashes. It never
+  `plan_revision`, `job_created`, `job_state`, `job_recovered`,
+  `provider_receipt` and `brand_saved`. Event data carries ids, revisions and hashes. It never
   carries transcripts, frames, prompts, paths or secrets.
 
 ## Migrations
@@ -126,8 +132,10 @@ Migrations are numbered SQL entries in `src/migrations.ts`. They are applied in
 order inside one transaction and recorded in `schema_migrations`. They are
 forward-only: a change appends a new entry and never edits an applied one. A
 database whose version is newer than the app throws
-`project schema N is newer than this app supports`. There is currently one
-migration.
+`project schema N is newer than this app supports`. There are two migrations:
+1 creates the original tables, and 2 adds `brand_profiles`. Opening a project
+created before migration 2 applies it (`store.test.ts` upgrades such a
+database).
 
 ## Path rules
 

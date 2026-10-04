@@ -9,7 +9,7 @@ HTML escaping). No renderer lives here. PRD §7.4, §9.1 ScenePackage, §15, F06
 
 | Path | Contents |
 |---|---|
-| `src/types.ts` | `Renderer`, `RenderInput`, `RenderOptions`, `RenderProgress`, `RenderArtifact`, `ResolvedAsset`, `ResolvedFont`, `Scene`, `SceneEnv`, `ScenePackage`, `Rect` (types only) |
+| `src/types.ts` | `Renderer`, `RenderInput` (optional `faceTracks`, `faceZoomMaxUpscale`), `FaceTrack`, `FaceTrackEntry`, `RenderOptions`, `RenderProgress`, `RenderArtifact`, `ResolvedAsset`, `ResolvedFont`, `Scene`, `SceneEnv`, `ScenePackage`, `Rect` (types only) |
 | `src/scene-kit.ts` | `platformSafeArea`, `REELS_SHORTS_INSETS`, `captionBox`, `CAPTION_BOX_HEIGHT`, `rectInside`, `rectsOverlap`, `mulberry32`, `clamp`, `frameProgress`, `linear`, `easeInOutCubic`, `easeOutBack`, `escapeHtml` |
 | `src/index.ts` | Re-exports both |
 

@@ -57,7 +57,7 @@ on the cumulative retained duration, so per-segment rounding never accumulates.
 
 ```text
 import ─► probe + proxy + analysis WAV (workers/media)
-       ─► VAD + ASR + word timing (workers/transcribe)
+       ─► face track + VAD + ASR + word timing (workers/transcribe)
        ─► candidates: fillers, silences, retakes (director/rules)
        ─► director proposes EditPlan (rules or Ollama or external)
        ─► validatePlan (contracts schema + compiler semantic rules)
@@ -76,4 +76,5 @@ evidence and settings, and returns JSON that is validated before anything runs.
 [projects.md](projects.md) (project-store) · [media.md](media.md) (media and
 transcription workers) · [director.md](director.md) · [rendering.md](rendering.md)
 · [engine.md](engine.md) · [agents.md](agents.md) (CLI, MCP, HTTP API)
-· [privacy.md](privacy.md) · [features.md](features.md) (feature status)
+· [privacy.md](privacy.md) · [app.md](app.md) (desktop app) · [features.md](features.md) (feature status)
+· [benchmarks.md](benchmarks.md) · [release-gates.md](release-gates.md)

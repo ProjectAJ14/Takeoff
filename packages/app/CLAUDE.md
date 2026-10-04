@@ -14,7 +14,8 @@ settings). It owns no editorial logic: every read and edit goes through the engi
 | `src/preload/preload.ts` | Sandboxed CJS preload: `window.takeoff = {apiBase, token, pickFolder, pickFiles, dropFiles, setProviders, revealInFolder}` |
 | `src/renderer/logic.ts` | Pure UI logic: `TOGGLES` (names verbatim, defaults), `creatorPolish`, `availability`, `effectiveSettings`, target length, `editBlocker`, `foldJob` stage views, `announceDelay`, `summarize`, `transcriptItems`, `timelineClips`, `sourceCutAt`, size estimate |
 | `src/renderer/api.ts` | `api()` fetch with bearer token, `watchJob()` SSE over a fetch stream, `patchPlan`, snapshot types |
-| `src/renderer/*.tsx` | `App` (navigation, caps), `FirstRun`, `Create`, `Processing` (`JobStages`), `Review` (transcript, summary, adjust, timeline, inspector), `ExportDialog`, `Settings`, `ui.tsx` (`Switch`, `ErrorNote`, `usePref`, `useAnnouncer`) |
+| `src/renderer/Brand.tsx` | `BrandEditor` (name, six palette roles, font file, logo, caption style, hook tone, glossary, prohibited claims → `POST /v1/brand-files`, `POST /v1/brands`), `BrandLibrary` (Settings) |
+| `src/renderer/*.tsx` | `App` (navigation, caps, brand library), `FirstRun`, `Create`, `Processing` (`JobStages`), `Review` (transcript, summary, adjust, timeline, inspector), `ExportDialog`, `Settings`, `ui.tsx` (`Switch`, `ErrorNote`, `usePref`, `useAnnouncer`) |
 | `src/renderer/styles.css` | Chrome styles: role tokens from `design/tokens.css`, bundled `@fontsource` latin subsets |
 | `scripts/build.ts` | esbuild main (ESM) + preload (CJS), Vite renderer → `dist/` |
 
@@ -44,7 +45,7 @@ drops type stripping or `node:sqlite`.
   /v1/projects/<id>/media/<sha256>` on the API port, because `<video>`/`<img>` cannot send headers.
 - Approved roots widen only in main, through `Workspace.addApprovedRoot`: a folder from the folder
   picker (persisted), single files from the file picker or a drop (session only, media extensions
-  only: takes `mp4 mov m4v`, B-roll also `png jpg jpeg`). Dropped paths come from
+  only: takes `mp4 mov m4v`, B-roll also `png jpg jpeg`; brand fonts `woff2 woff ttf otf`, logos `png jpg jpeg`). Dropped paths come from
   `webUtils.getPathForFile` in the preload. Reveal-in-folder accepts only approved paths.
 - Provider approvals (`broker.setPolicy`) are written only by main (`setProviders` IPC from Settings); the
   HTTP API can read them but has no write route, so no API caller can grant itself egress.
@@ -58,7 +59,10 @@ drops type stripping or `node:sqlite`.
 - Processing shows a bar only when the job reports `progress`, elapsed time otherwise; the live region
   speaks at most once per 5 s.
 - `localStorage` holds only per-viewer conveniences (ground, last project id/folder, first-run flag,
-  draft brand, asset display names, presets); losing it loses no project data.
+  selected brand id, asset display names, presets); losing it loses no project data. Brands live in the engine library.
+- Create: B-roll cards edit tags (`PATCH /v1/projects/{id}/assets/{assetId}`); the Fillers row edits the filler dictionary
+  (always keep / always cut, sent even when empty so clearing works); the Brand select stores the library brand's version in
+  the project. Review offers up to three verbatim hook options plus a free edit (`set_hook`).
 
 ## Checks
 
@@ -76,7 +80,7 @@ toggles are keyboard-operable switches with `aria-checked` and an On/Off word. I
 Electron binary is missing. Set `TAKEOFF_APP_SHOTS=<dir>` to save screenshots.
 
 `test/e2e/ui-e2e.ts` (not in `npm test`; slow) drives the real app on `say`-generated footage through
-first run, create, Edit Video, review (play, restore, undo, caption edit, lock) and export, ffprobes the
+first run (brand with highlight colour and logo), create (tagged B-roll, filler dictionary), review (hook option), Edit Video, review (play, restore, undo, caption edit, lock) and export, ffprobes the
 MP4, records every request the session sees (all must be loopback/app/blob/data), runs a keyboard-only
 create pass and saves screenshots at 1440/1200/900 px and 200% zoom in both grounds under the OS temp dir.
 Pickers are answered by `TAKEOFF_TEST_PICK` (paths joined by the platform delimiter), which main honours

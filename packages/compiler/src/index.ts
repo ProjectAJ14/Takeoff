@@ -4,6 +4,7 @@ export {
   MAX_PUNCH_SCALE,
   CompileError,
   compile,
+  isExportBlocking,
   outputToSource,
   planHash,
   sourceToOutput,

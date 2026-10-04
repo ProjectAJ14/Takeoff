@@ -60,7 +60,7 @@ Source time is integer microseconds (`*Us`), output time integer frames
 | `remove_span` | `assetId, sourceStartUs, sourceEndUs, reason` |
 | `replace_take` | `segmentId, assetId, wordIds, sourceStartUs, sourceEndUs` |
 | `set_caption` | `captionId`, optional `text, wordIds, emphasisWordIds, template` (`restrained`/`energetic`/`static`), `positionPolicy` (`safe_face_aware`/`safe_bottom`/`safe_top`) |
-| `set_crop` | `segmentId, rect {x, y, w, h}` as fractions of the source frame |
+| `set_crop` | `segmentId, rect {x, y, width, height}` as fractions of the source frame |
 | `replace_asset` | `targetId, assetId` |
 | `set_gain` | `targetId, gainDb` |
 | `lock_object` / `unlock_object` | `objectId` |

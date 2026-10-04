@@ -219,3 +219,6 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--spot); width: 
   *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }
 .field > .btn, .form > .btn { align-self: flex-start; }
+.plain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.tags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.radios--stack { flex-direction: column; gap: var(--space-2); }

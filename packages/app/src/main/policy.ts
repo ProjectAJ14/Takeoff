@@ -38,7 +38,11 @@ export function csp(port: number): string {
 /** The only API path main attaches the token to on the renderer's behalf (media elements cannot send headers). */
 export const isMediaPath = (pathname: string) => /^\/v1\/projects\/[^/]+\/media\/[0-9a-f]{64}$/.test(pathname);
 
-export const POOLS = { takes: ['mp4', 'mov', 'm4v'], broll: ['mp4', 'mov', 'm4v', 'png', 'jpg', 'jpeg'] } as const;
+/** Picker kinds and their extensions: footage pools, and brand files (fonts, logos) for the brand editor. */
+export const POOLS = {
+  takes: ['mp4', 'mov', 'm4v'], broll: ['mp4', 'mov', 'm4v', 'png', 'jpg', 'jpeg'], font: ['woff2', 'woff', 'ttf', 'otf'], logo: ['png', 'jpg', 'jpeg'],
+} as const;
+export const POOL_NAMES: Record<keyof typeof POOLS, string> = { takes: 'Recordings', broll: 'B-roll', font: 'Fonts', logo: 'Logo images' };
 export type PoolKind = keyof typeof POOLS;
 export const isPool = (k: unknown): k is PoolKind => typeof k === 'string' && Object.hasOwn(POOLS, k);
 

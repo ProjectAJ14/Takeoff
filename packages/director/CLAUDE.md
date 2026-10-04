@@ -20,6 +20,7 @@ with 1.5 s hold and ≤4 per 30 s) are named at the top of each file.
 
 ## Invariants
 
+- User B-roll before a motion template later in the same sentence is shortened to end before it (still ≥ 1.5 s), never overlapping it.
 - Only `high` candidates are removed automatically. `medium` and `low` become
   `review` decisions; retakes under review also get an `uncertain_retake` marker.
   A model may accept a `medium` candidate or reject a `high` one, nothing more.
@@ -48,6 +49,30 @@ with 1.5 s hold and ≤4 per 30 s) are named at the top of each file.
   in `detectors.ts` and `plan.ts`.
 - Labels for motion templates and hook text are transcript words verbatim; music
   and SFX appear only when enabled and the caller supplies the asset id.
+- Hook options never come from a sign-off sentence ("Thanks for watching", "See you", "That's it").
+- Hook options (F13) are complete phrases of ≤9 surviving words: lead-ins and stated
+  intent ("So today I want to explain") are stripped, a long sentence is cut at clause
+  punctuation or before a clause/phrase start, never ends on a function word, and is
+  rejected when the cut would drop a qualifier or negation, or no boundary exists.
+- Fillers (F04): `settings.fillerDictionary.preserve` always wins, also over
+  caller-supplied candidates; `remove` entries add `high` candidates (built-in markers
+  keep their grammatical guard); standalone "Ah," (sentence start) and "Mm" (comma or
+  pause) count at every strength. Uncertain alignment or overlap still demotes to `low`.
+- Retakes across files (F03): a sentence in an earlier take whose first 4 words (homophones "to/2", "for/4" folded)
+  open a sentence in a later take is the same idea. Unfinished prefix or a restart cue ("let me start again") → `high`
+  `false_start`; any other difference → `medium` review; identical sentences → nothing. Lexical only, no semantics.
+- Purposeful pauses (F05): a pause after an ASR "..."/"—"/":" word, or before a ≤2-word ending that follows a
+  non-final word or a question ("the answer is? Nothing."), is a `medium` silence (review), never auto-cut.
+- Hard max (F14): a ≤2-word sentence counts as part of the one before it (setup and payoff drop together);
+  whole middle sentences are dropped by priority until the frames fit;
+  if first + last still do not fit, a `critical` `duration_conflict` marker carries the
+  frame numbers and the compiler treats the draft as an export-blocking conflict.
+- B-roll (F07) only with ≥1 exact stemmed tag match in a retained sentence: anchored to
+  the word, 1.5–4 s inside its sentence, not before 1.5 s, ≤1 per 8 s, never over a
+  motion template, each asset once; `full` only for an image with ≥2 tag hits.
+- Music (F09) by brief mood (default calm), preferring a track that covers the
+  timeline; SFX (F10) a hit on the hook and a whoosh on each template, ≤1 per 5 s.
+- `source_clipping` marker when `ctx.voiceAnalysis` reports clipping > 0.1 % or severe.
 - Output-time numbers here (zoom spacing, visual durations) are estimates from
   retained source spans; the compiler stays authoritative for output time.
 

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { validate, type ErrorInfo } from '@takeoff/contracts';
 import { StaleRevisionError } from '@takeoff/project-store';
 import type { Engine } from './engine.ts';
+import { getLibraryBrand, importBrandFile, libraryDir, listLibraryBrands, saveLibraryBrand } from './brands.ts';
 import { EngineError, toErrorInfo } from './errors.ts';
 import { planRequest } from './requests.ts';
 import { badRequest, inspectFrames, isTerminal, mediaFile, requireEditDefaults, setEditDefaults, snapshot, startJob, type Workspace } from './workspace.ts';
@@ -44,7 +45,7 @@ class HttpError extends Error {
 
 const STATUS: Record<string, number> = {
   not_found: 404, path_not_approved: 403, stale_revision: 409, project_exists: 409, locked_object: 409, nothing_to_undo: 409, nothing_to_redo: 409,
-  revision_not_found: 404, internal: 500, renderer_unavailable: 503, egress_denied: 403, network_denied: 403, director_unavailable: 503, brand_not_found: 404,
+  revision_not_found: 404, internal: 500, brand_version_exists: 409, brand_file_missing: 422, prohibited_claim: 422, renderer_unavailable: 503, egress_denied: 403, network_denied: 403, director_unavailable: 503, brand_not_found: 404,
 };
 const statusOf = (code: string) => STATUS[code] ?? (code.startsWith('invalid') ? 400 : 422);
 
@@ -238,8 +239,32 @@ export function startServer(ws: Workspace, opts: ServerOptions = {}): Promise<Ru
         return send(res, 200, { schemaVersion: '1.0', editDefaults: setEditDefaults(project(), b) });
       }
       case 'POST /v1/projects/:/brands': {
-        const id = await project().saveBrandProfile(await body(req));
-        return send(res, 201, { schemaVersion: '1.0', ref: id });
+        // {brandId, version?} picks a library brand (its files are copied in); a full profile is stored as given.
+        const b = await body(req);
+        let profile = b;
+        if (b.brandId !== undefined) {
+          if (typeof b.brandId !== 'string' || (b.version !== undefined && !Number.isSafeInteger(b.version))) throw badRequest('brandId must be a string and version an integer');
+          profile = getLibraryBrand(ws.appDataDir, b.brandId, b.version);
+          if (!profile) throw new HttpError(404, 'brand_not_found', 'that brand is not in the library', 'Save the brand first.');
+        }
+        const ref = await project().saveBrandProfile(profile);
+        return send(res, 201, { schemaVersion: '1.0', ref });
+      }
+      case 'PATCH /v1/projects/:/assets/:': {
+        const b = await body(req);
+        const extra = Object.keys(b).find((k) => k !== 'tags');
+        if (extra) throw badRequest(`unknown field ${extra.slice(0, 40)}`);
+        return send(res, 200, { schemaVersion: '1.0', assetId: parts[4], tags: project().setAssetTags(parts[4]!, b.tags) });
+      }
+      case 'GET /v1/brands':
+        return send(res, 200, { schemaVersion: '1.0', brands: listLibraryBrands(ws.appDataDir) });
+      case 'POST /v1/brands':
+        return send(res, 201, { schemaVersion: '1.0', brand: saveLibraryBrand(ws.appDataDir, await body(req)) });
+      case 'POST /v1/brand-files': {
+        // A font or logo the user picked (the picker approved the path); copied into the library by content hash.
+        const b = await body(req);
+        if (typeof b.path !== 'string' || (b.kind !== 'font' && b.kind !== 'logo')) throw badRequest('path and kind (font or logo) are required');
+        return send(res, 201, { schemaVersion: '1.0', ...importBrandFile(libraryDir(ws.appDataDir), ws.approved(b.path), b.kind) });
       }
       case 'GET /v1/projects/:/providers':
         return send(res, 200, { schemaVersion: '1.0', policy: project().broker.policy() });
