@@ -1,0 +1,21 @@
+{
+  "name": "@takeoff/renderer-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@takeoff/compiler": "0.0.0",
+    "@takeoff/contracts": "0.0.0",
+    "@takeoff/media": "0.0.0",
+    "@takeoff/renderer-api": "0.0.0",
+    "@fontsource/inter": "^5.3.0",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.63.0"
+  }
+}

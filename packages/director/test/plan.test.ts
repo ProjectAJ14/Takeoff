@@ -209,3 +209,12 @@ test('segments: untranscribed VAD speech between two cuts is kept, not dropped a
   const plain = buildPlan(request(ws));
   assert.ok(!plain.segments.some((s) => s.sourceStartUs < vad.sourceEndUs && vad.sourceStartUs < s.sourceEndUs), 'without VAD the gap is dead air');
 });
+
+test('segments: a wordless sliver shorter than 300 ms between two cuts is dropped even inside VAD speech', () => {
+  // "Uh," then a 200 ms pause, then an abandoned start: the filler cut and the false-start cut leave 200 ms of nothing.
+  const ws = words('Hello there. Uh, [200] so the main thing is, so the main thing is that Dio is fast.');
+  const vad = { assetId: 'take_a', sourceStartUs: 0, sourceEndUs: ws.at(-1)!.sourceEndUs };
+  const plan = buildPlan(request(ws), { speech: [vad] });
+  assert.deepEqual(schemaCheck(plan), []);
+  assert.ok(plan.segments.every((s) => s.wordIds.length > 0), JSON.stringify(plan.segments.map((s) => [s.sourceStartUs, s.sourceEndUs])));
+});

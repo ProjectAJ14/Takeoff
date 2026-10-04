@@ -69,3 +69,10 @@ import ─► probe + proxy + analysis WAV (workers/media)
 
 The director never sees a path or a shell. It receives transcript words, candidate
 evidence and settings, and returns JSON that is validated before anything runs.
+
+## Package pages
+
+[schema.md](schema.md) (contracts) · [timeline.md](timeline.md) (compiler) ·
+[projects.md](projects.md) (project-store) · [media.md](media.md) (media and
+transcription workers) · [director.md](director.md) · [rendering.md](rendering.md)
+· [features.md](features.md) (feature status)

@@ -26,6 +26,7 @@ same shape as this file: what it owns, its invariants, its checks.
 | `packages/renderer-api/` | Renderer-neutral compiled-plan interface and scene contract | §7.4 |
 | `packages/renderer-browser/` | Chromium/Playwright + FFmpeg renderer, sandboxed scenes | §7.4, §15 |
 | `packages/renderer-remotion/` | Optional renderer, behind the license decision | §7.1, §15 |
+| `packages/engine/` | Job coordinator, pipeline, QA, export, provider broker, loopback HTTP API, `takeoff` CLI, MCP server | §7.2, §8, §11, §13, §14 |
 | `packages/app/` | Electron shell and React/TypeScript UI | §5 |
 | `workers/media/` | Probe, ingest, proxies, FFmpeg processes (Python or native) | F01 |
 | `workers/transcribe/` | VAD, ASR, alignment, glossary (Python) | F02 |

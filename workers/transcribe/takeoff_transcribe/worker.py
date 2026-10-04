@@ -6,6 +6,7 @@ reach the network. Every stdout line is one JSON object.
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -16,7 +17,11 @@ from datetime import UTC, datetime
 
 SAMPLE_RATE = 16000
 BACKEND = "faster_whisper"
-VAD_VERSION = "silero_vad_v6"
+VAD_VERSION = "silero_vad_v6_s300_p30"
+# Reported speech intervals must expose pauses the director cuts (>=700 ms). faster-whisper's
+# defaults (2 s min silence, 400 ms pad) merge them into one interval, so every pause looked like speech.
+MISSED_SPEECH_US = 500_000  # VAD speech at least this long with no word is re-transcribed
+VAD_REPORT = {"min_silence_duration_ms": 300, "speech_pad_ms": 30}
 ALIGNMENT_VERSION = "whisper_word_timestamps"
 # ponytail: fixed heuristics; tune against the F02 fixture set when it exists.
 REPEAT_LIMIT = 3  # this many identical consecutive segments = hallucination loop
@@ -125,6 +130,17 @@ def is_hallucination(segments: list, has_vad_speech: bool) -> bool:
     return False
 
 
+def shift_segment(seg, offset_s: float):
+    """A copy of a segment (and its words) moved by `offset_s` seconds: for a slice transcribed on its own."""
+    def moved(x):
+        x = copy.copy(x)
+        x.start, x.end = x.start + offset_s, x.end + offset_s
+        return x
+    out = moved(seg)
+    out.words = [moved(w) for w in seg.words] if seg.words else seg.words
+    return out
+
+
 def build_words(segments: list, end_us: int | None = None) -> tuple[list[dict], list[dict]]:
     """Words get stable ids w0001.. in source order; one sentence per ASR segment.
 
@@ -211,22 +227,35 @@ def transcribe(audio: str, model: str, language: str, glossary: list[str], devic
     emit({"type": "progress", "stage": "vad", "done": 0, "total": 1})
     speech = [
         {"startUs": c["start"] * 1_000_000 // SAMPLE_RATE, "endUs": c["end"] * 1_000_000 // SAMPLE_RATE}
-        for c in get_speech_timestamps(pcm, VadOptions(), sampling_rate=SAMPLE_RATE)
+        for c in get_speech_timestamps(pcm, VadOptions(**VAD_REPORT), sampling_rate=SAMPLE_RATE)
     ]
     emit({"type": "progress", "stage": "vad", "done": 1, "total": 1})
 
-    segs_iter, info = whisper.transcribe(
-        pcm,
-        language=None if language == "auto" else language,
-        initial_prompt=", ".join(glossary) or None,
-        word_timestamps=True,
-        vad_filter=True,
-        **DECODE,
-    )
+    def asr(audio_pcm):
+        return whisper.transcribe(
+            audio_pcm,
+            language=None if language == "auto" else language,
+            initial_prompt=", ".join(glossary) or None,
+            word_timestamps=True,
+            vad_filter=True,
+            **DECODE,
+        )
+
+    segs_iter, info = asr(pcm)
     segments = []
     for seg in segs_iter:
         segments.append(seg)
         emit({"type": "progress", "stage": "transcribe", "done": min(sec_to_us(seg.end), total_us), "total": total_us})
+    # Whisper can end a window early and silently drop later speech (seen with a glossary prompt:
+    # everything after a 2 s pause vanished). VAD speech that no word covers is transcribed again alone.
+    for iv in speech:
+        if iv["endUs"] - iv["startUs"] < MISSED_SPEECH_US or any(
+                sec_to_us(w.start) < iv["endUs"] and iv["startUs"] < sec_to_us(w.end) for s in segments for w in (s.words or [])):
+            continue
+        a = iv["startUs"] * SAMPLE_RATE // 1_000_000
+        b = iv["endUs"] * SAMPLE_RATE // 1_000_000
+        segments.extend(shift_segment(seg, a / SAMPLE_RATE) for seg in asr(pcm[a:b])[0])
+    segments.sort(key=lambda seg: seg.start)
     emit({"type": "progress", "stage": "transcribe", "done": total_us, "total": total_us})
 
     words, sentences = build_words(segments, total_us)

@@ -38,7 +38,10 @@ with 1.5 s hold and ≤4 per 30 s) are named at the top of each file.
   back to `buildPlan`. `provenance` records director, seed and prompt version.
 - Segments are each asset's span minus removals. A span left between two cuts is
   kept only if it holds whole words or overlaps VAD speech (`ctx.speech`), so
-  untranscribed speech is never dropped as dead air.
+  untranscribed speech is never dropped as dead air; a wordless span under 300 ms
+  (below the worker's VAD minimum silence) is dropped regardless. A silence cut whose
+  edge falls inside VAD speech moves to the speech boundary; only VAD speech wholly
+  inside the cut makes it a review.
 - A model picks a hook by index into the options it was shown; `parseChoices`
   resolves that to the option's evidence ids, and `null` means no automatic hook.
 - Deterministic: same request and context → same plan. No clock, randomness or I/O

@@ -5,8 +5,36 @@ package you change. Behaviour and its documentation ship in the same PR.
 
 ## Set up development
 
-Nothing to build yet. Each package adds its setup block here when it lands
-(PRD §17 build order: contracts and media spine first).
+Before you start, install:
+
+- Node.js 24 or newer
+- `ffmpeg` and `ffprobe` with `libx264` on `PATH`. To use other binaries, set
+  `TAKEOFF_FFMPEG` and `TAKEOFF_FFPROBE`
+- [uv](https://docs.astral.sh/uv/) for the Python transcription worker
+
+```sh
+npm install                          # all workspaces; Node runs TypeScript directly, there is no build step
+(cd workers/transcribe && uv sync)   # Python 3.12 environment for the transcription worker
+npm run check                        # tsc --noEmit + every Node test (packages/* and workers/media)
+```
+
+The Python worker has its own tests:
+
+```sh
+cd workers/transcribe && uv run python -m unittest discover -s tests -v
+```
+
+These tests need macOS `say`, `ffmpeg`, `node` and the cached
+`Systran/faster-whisper-tiny` model. To download the model once, run:
+
+```sh
+uv run python -m takeoff_transcribe download-model --model tiny --allow-network
+```
+
+The speech tests skip when `say` or `ffmpeg` is missing.
+
+To test one package: `node --test "packages/<name>/test/**/*.test.ts"`.
+Each package's `CLAUDE.md` lists its own checks.
 
 ## Choose the right checks
 

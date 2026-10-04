@@ -42,6 +42,9 @@ class TranscribeTest(unittest.TestCase):
         subprocess.run([*ff, "-i", aiff, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", cls.speech], check=True)
         subprocess.run([*ff, "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", "-t", "4",
                         "-c:a", "pcm_s16le", cls.silence], check=True)
+        cls.paused = os.path.join(cls.tmp, "paused.wav")  # speech, 1.5 s digital silence, speech
+        subprocess.run([*ff, "-i", cls.speech, "-f", "lavfi", "-t", "1.5", "-i", "anullsrc=r=16000:cl=mono", "-i", cls.speech,
+                        "-filter_complex", "[0:a][1:a][2:a]concat=n=3:v=0:a=1", "-c:a", "pcm_s16le", cls.paused], check=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -82,6 +85,38 @@ class TranscribeTest(unittest.TestCase):
                   "if(!r.ok){console.error(JSON.stringify(r.errors));process.exit(1)}")
             p = subprocess.run(["node", "--input-type=module", "-e", js, out], cwd=REPO, capture_output=True, text=True)
             self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_vad_intervals_expose_a_pause(self):
+        out = os.path.join(self.tmp, "paused.json")
+        code, events = run_cli("transcribe", "--audio", self.paused, "--model", "tiny", "--language", "en", "--out", out)
+        self.assertEqual(code, 0, events[-1])
+        ivs = events[-1]["speechIntervals"]
+        first_end = worker.read_wav(self.speech).__len__() * 1_000_000 // worker.SAMPLE_RATE
+        # Some interval boundary falls inside the pause, leaving >=1 s with no reported speech.
+        gaps = [b["startUs"] - a["endUs"] for a, b in zip(ivs, ivs[1:])]
+        self.assertTrue(any(g >= 1_000_000 for g in gaps), ivs)
+        self.assertTrue(any(a["endUs"] <= first_end + 200_000 for a in ivs), ivs)
+
+    def test_vad_speech_whisper_skipped_is_transcribed_again(self):
+        # Whisper ends after the first phrase; VAD heard speech at 2.0-3.5 s that no word covers.
+        W = lambda text, s, e: SimpleNamespace(word=text, start=s, end=e, probability=0.9)
+        S = lambda text, s, e, ws: SimpleNamespace(text=text, start=s, end=e, avg_logprob=-0.2, words=ws)
+        calls = []
+
+        class Fake:
+            def transcribe(self, pcm, **kw):
+                calls.append(len(pcm))
+                if len(calls) == 1:
+                    return iter([S(" one two", 0.1, 0.9, [W(" one", 0.1, 0.5), W(" two", 0.5, 0.9)])]), SimpleNamespace(language="en")
+                return iter([S(" three", 0.1, 0.6, [W(" three", 0.1, 0.6)])]), SimpleNamespace(language="en")
+
+        vad = [{"start": 0, "end": 16000}, {"start": 32000, "end": 56000}]
+        with mock.patch.object(worker, "load_model", return_value=Fake()), \
+             mock.patch("faster_whisper.vad.get_speech_timestamps", return_value=vad), \
+             mock.patch.object(worker, "emit"):
+            t, _ = worker.transcribe(self.silence, "tiny", "en", [], "cpu")
+        self.assertEqual(calls, [64000, 24000])
+        self.assertEqual([(w["text"], w["sourceStartUs"]) for w in t["words"]], [("one", 100000), ("two", 500000), ("three", 2100000)])
 
     def test_silence_is_no_speech(self):
         out = os.path.join(self.tmp, "silence.json")

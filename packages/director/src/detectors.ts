@@ -125,14 +125,21 @@ const overlapsSpeech = (speech: SpeechInterval[], assetId: Id, s: number, e: num
 
 /**
  * Interior gaps ≥700 ms shrink to ~300 ms (≥120 ms pad each side); leading/trailing dead air keeps 150 ms.
- * Trailing needs the asset duration. Cuts never enter a word. VAD speech inside the cut → review, not removal.
+ * Trailing needs the asset duration. Cuts never enter a word or VAD speech at their edges. VAD speech wholly inside the cut → review, not removal.
  */
 export function detectSilences(words: Word[], speech: SpeechInterval[] = [], durationsUs: Record<Id, number> = {}): Draft[] {
   const ws = orderWords(words);
   const out: Draft[] = [];
   const pad = Math.max(SILENCE_PAD_US, SILENCE_KEEP_US / 2);
   const push = (assetId: Id, s: number, e: number, around: Word[], evidence: string) => {
-    if (e <= s) return;
+    // VAD speech straddling an edge (speech that runs on past the last word, or starts early) moves
+    // the edge out of it; only speech wholly inside the gap makes the cut a review.
+    for (const v of speech) {
+      if (v.assetId !== assetId) continue;
+      if (v.sourceStartUs <= s && v.sourceEndUs > s) s = v.sourceEndUs;
+      if (v.sourceStartUs < e && v.sourceEndUs >= e) e = v.sourceStartUs;
+    }
+    if (e - s < SILENCE_PAD_US) return;
     const vad = overlapsSpeech(speech, assetId, s, e);
     const ok = aligned(around) && !vad;
     out.push({

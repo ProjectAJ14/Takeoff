@@ -99,6 +99,8 @@ function splitSentences(ws: Word[]): Word[][] {
   return out.filter((s) => s.length);
 }
 
+const SLIVER_US = 300_000;
+
 interface Range {
   assetId: Id;
   s: number;
@@ -129,7 +131,8 @@ function buildSegments(ws: Word[], removals: Range[], durationsUs: Record<Id, nu
     for (const [s, e] of kept) {
       const wordIds = aw.filter((w) => w.sourceStartUs >= s && w.sourceEndUs <= e).map((w) => w.id);
       // A span between two cuts with no words is dead air, unless VAD heard untranscribed speech there.
-      if (e > s && (wordIds.length || vad(s, e))) {
+      // Below VAD's 300 ms minimum silence a pause reads as speech, so a shorter wordless sliver is dead air.
+      if (e > s && (wordIds.length || (e - s >= SLIVER_US && vad(s, e)))) {
         segs.push({
           id: `seg_${pad4(segs.length + 1)}`,
           assetId,

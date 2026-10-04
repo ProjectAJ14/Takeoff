@@ -83,6 +83,20 @@ test('silences: VAD speech inside a gap downgrades to review', () => {
   assert.equal(s.find((c) => c.evidence.startsWith('pause'))!.confidenceTier, 'medium');
 });
 
+test('silences: VAD speech running past a word edge moves the cut, it does not make it a review', () => {
+  const ws = words('One two. [1500] Three.');
+  const runOn = ws[1]!.sourceEndUs + 200_000; // VAD hears the tail of "two" 200 ms past the word end
+  const s = detectSilences(ws, [{ assetId: 'take_a', sourceStartUs: ws[0]!.sourceStartUs, sourceEndUs: runOn }], { take_a: ws[2]!.sourceEndUs + 2_000_000 });
+  const pause = s.find((c) => c.evidence.startsWith('pause'))!;
+  assert.equal(pause.confidenceTier, 'high');
+  assert.equal(pause.sourceStartUs, runOn);
+  assert.equal(pause.sourceEndUs, ws[2]!.sourceStartUs - 150_000);
+  const trail = detectSilences(ws, [{ assetId: 'take_a', sourceStartUs: ws[2]!.sourceStartUs, sourceEndUs: ws[2]!.sourceEndUs + 300_000 }], { take_a: ws[2]!.sourceEndUs + 2_000_000 })
+    .find((c) => c.evidence === 'trailing dead air')!;
+  assert.equal(trail.confidenceTier, 'high');
+  assert.equal(trail.sourceStartUs, ws[2]!.sourceEndUs + 300_000);
+});
+
 test('retakes: abandoned strict-prefix start is a high false_start', () => {
   const ws = words('So the main thing is, so the main thing is that Dio is fast.');
   const r = detectRetakes(ws);

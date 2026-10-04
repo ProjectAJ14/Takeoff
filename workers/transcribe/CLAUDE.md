@@ -41,6 +41,11 @@ stderr is free-form library noise; do not parse it.
   to the WAV's sha256 (pass `--source-hash` to use the original media's hash).
 - Last line: `{"type":"result","out","sourceHash","configHash","speechIntervals":[{"startUs","endUs"}]}`.
   Speech intervals travel here because the transcript schema has no field for them.
+  They use Silero with 300 ms minimum silence and 30 ms pad (`VAD_REPORT`), so
+  pauses the director cuts (≥700 ms) show as gaps; faster-whisper's defaults
+  (2 s, 400 ms) merged them. Any VAD interval ≥500 ms that no word covers is
+  transcribed again on its own and merged: Whisper can end early and silently
+  drop later speech (seen with a glossary prompt).
 - `configHash` = sha256 of canonical JSON of backend, faster-whisper version,
   model, compute type, language, glossary, VAD version and decode options
   (`beam_size`, `condition_on_previous_text`). The engine's cache key is
