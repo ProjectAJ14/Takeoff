@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "1.0",
+  "ops": [
+    {
+      "op": "restore_span",
+      "assetId": "take_a",
+      "sourceStartUs": 0,
+      "sourceEndUs": 1000000
+    },
+    {
+      "op": "remove_span",
+      "assetId": "take_a",
+      "sourceStartUs": 10,
+      "sourceEndUs": 20,
+      "reason": "User cut"
+    },
+    {
+      "op": "replace_take",
+      "segmentId": "speech_01",
+      "assetId": "take_a",
+      "sourceStartUs": 5000000,
+      "sourceEndUs": 8000000,
+      "wordIds": [
+        "w20",
+        "w21"
+      ]
+    },
+    {
+      "op": "set_caption",
+      "captionId": "caption_01",
+      "text": "Flutter sends a request"
+    },
+    {
+      "op": "set_crop",
+      "segmentId": "speech_01",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0.5,
+        "height": 1
+      }
+    },
+    {
+      "op": "replace_asset",
+      "targetId": "broll_01",
+      "assetId": "clip_b"
+    },
+    {
+      "op": "set_gain",
+      "targetId": "music_a",
+      "gainDb": -20
+    },
+    {
+      "op": "lock_object",
+      "objectId": "caption_01"
+    },
+    {
+      "op": "unlock_object",
+      "objectId": "zoom_01"
+    },
+    {
+      "op": "set_setting",
+      "key": "fillers",
+      "value": false
+    },
+    {
+      "op": "set_setting",
+      "key": "networkPolicy",
+      "value": "approved_providers"
+    },
+    {
+      "op": "set_setting",
+      "key": "fillerStrength",
+      "value": "conservative"
+    },
+    {
+      "op": "set_setting",
+      "key": "targetSeconds",
+      "value": null
+    },
+    {
+      "op": "set_setting",
+      "key": "hook",
+      "value": {
+        "autoSelect": true,
+        "text": null
+      }
+    },
+    {
+      "op": "reorder_segment",
+      "segmentId": "speech_01",
+      "toIndex": 0
+    },
+    {
+      "op": "split_segment",
+      "segmentId": "speech_01",
+      "atSourceUs": 2000000,
+      "newSegmentId": "speech_01b"
+    },
+    {
+      "op": "trim_segment",
+      "segmentId": "speech_01",
+      "sourceStartUs": 1100000,
+      "sourceEndUs": 3900000
+    },
+    {
+      "op": "remove_visual",
+      "visualId": "flow_01"
+    },
+    {
+      "op": "set_hook",
+      "text": "Dio is in-app",
+      "evidenceIds": [
+        "w06"
+      ]
+    }
+  ]
+}

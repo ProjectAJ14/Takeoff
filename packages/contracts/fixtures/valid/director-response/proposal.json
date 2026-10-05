@@ -1,0 +1,142 @@
+{
+  "schemaVersion": "1.0",
+  "decisions": [
+    {
+      "id": "decision_01",
+      "assetId": "take_a",
+      "action": "remove",
+      "sourceStartUs": 0,
+      "sourceEndUs": 1000000,
+      "reason": "Leading non-speech confirmed by VAD",
+      "evidenceIds": [
+        "vad_gap_01"
+      ],
+      "confidenceTier": "high"
+    }
+  ],
+  "segments": [
+    {
+      "id": "speech_01",
+      "assetId": "take_a",
+      "sourceStartUs": 1000000,
+      "sourceEndUs": 4000000,
+      "wordIds": [
+        "w01",
+        "w02",
+        "w03",
+        "w04",
+        "w05",
+        "w06",
+        "w07",
+        "w08",
+        "w09",
+        "w10",
+        "w11"
+      ],
+      "speed": {
+        "num": 1,
+        "den": 1
+      },
+      "cropPolicy": "face_safe_vertical",
+      "locked": false
+    }
+  ],
+  "captions": [
+    {
+      "id": "caption_01",
+      "segmentId": "speech_01",
+      "wordIds": [
+        "w01",
+        "w02",
+        "w03",
+        "w04",
+        "w05"
+      ],
+      "text": "Flutter sends a request through",
+      "template": "restrained",
+      "emphasisWordIds": [
+        "w01"
+      ],
+      "positionPolicy": "safe_face_aware",
+      "locked": false
+    },
+    {
+      "id": "caption_02",
+      "segmentId": "speech_01",
+      "wordIds": [
+        "w06",
+        "w07",
+        "w08",
+        "w09",
+        "w10",
+        "w11"
+      ],
+      "text": "Dio to the server in seconds.",
+      "template": "restrained",
+      "emphasisWordIds": [
+        "w06"
+      ],
+      "positionPolicy": "safe_face_aware",
+      "locked": false
+    }
+  ],
+  "visuals": [
+    {
+      "id": "flow_01",
+      "kind": "motion_template",
+      "segmentId": "speech_01",
+      "anchor": {
+        "wordId": "w01",
+        "edge": "start",
+        "offsetFrames": 0
+      },
+      "durationFrames": 90,
+      "template": "request_flow_v1",
+      "params": {
+        "containerLabel": "Flutter app",
+        "internalNode": "Dio HTTP client",
+        "externalNode": "Server",
+        "edgeLabel": "Request"
+      },
+      "evidenceIds": [
+        "w01",
+        "w04",
+        "w06",
+        "w09"
+      ],
+      "fallback": "omit",
+      "locked": false
+    }
+  ],
+  "transforms": [
+    {
+      "id": "zoom_01",
+      "segmentId": "speech_01",
+      "anchor": {
+        "wordId": "w06",
+        "edge": "start",
+        "offsetFrames": 0
+      },
+      "kind": "punch",
+      "scale": 1.12,
+      "centerPolicy": "tracked_face",
+      "transitionFrames": 4,
+      "locked": false
+    }
+  ],
+  "reviewMarkers": [],
+  "provenance": {
+    "director": "local_adapter",
+    "seed": 42,
+    "promptVersion": "director_v1"
+  },
+  "hookOptions": [
+    {
+      "text": "Flutter to server, via Dio",
+      "evidenceIds": [
+        "w01",
+        "w06"
+      ]
+    }
+  ]
+}

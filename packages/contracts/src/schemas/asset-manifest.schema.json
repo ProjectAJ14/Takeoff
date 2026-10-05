@@ -1,0 +1,308 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/asset-manifest.schema.json",
+  "title": "AssetManifest",
+  "description": "Portable asset record (PRD 9.1, F01). Paths are project-relative; absolute paths and secrets never appear here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "kind",
+    "contentHash",
+    "relativePath",
+    "probe",
+    "derived",
+    "rights",
+    "provenance",
+    "permissionScope"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "kind": {
+      "$ref": "common.schema.json#/$defs/assetKind"
+    },
+    "contentHash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "relativePath": {
+      "$ref": "common.schema.json#/$defs/relPath"
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "durationUs",
+        "video",
+        "audio"
+      ],
+      "properties": {
+        "durationUs": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/us"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "video": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "width",
+                "height",
+                "rotation",
+                "fpsNum",
+                "fpsDen",
+                "vfr",
+                "codec",
+                "colorTransfer",
+                "colorPrimaries",
+                "pixFmt"
+              ],
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16384
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16384
+                },
+                "rotation": {
+                  "enum": [
+                    0,
+                    90,
+                    180,
+                    270
+                  ]
+                },
+                "fpsNum": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fpsDen": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "vfr": {
+                  "type": "boolean"
+                },
+                "codec": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "colorTransfer": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "colorPrimaries": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pixFmt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audio": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sampleRate",
+                "channels",
+                "codec"
+              ],
+              "properties": {
+                "sampleRate": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 768000
+                },
+                "channels": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "codec": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proxy",
+        "analysisWav"
+      ],
+      "properties": {
+        "proxy": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "analysisWav": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origin",
+        "license",
+        "attribution",
+        "sourceUrl"
+      ],
+      "properties": {
+        "origin": {
+          "enum": [
+            "user",
+            "bundled",
+            "stock",
+            "generated"
+          ]
+        },
+        "license": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceUrl": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/httpsUrl"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "importedAt",
+        "importer"
+      ],
+      "properties": {
+        "importedAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "importer": {
+          "$ref": "common.schema.json#/$defs/version"
+        }
+      }
+    },
+    "permissionScope": {
+      "enum": [
+        "local_only",
+        "approved_providers"
+      ]
+    }
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/style-profile.schema.json",
+  "title": "StyleProfile",
+  "description": "Editable aggregated style traits from permitted references (F16). Holds no reference media.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "pace",
+    "shotDurationUs",
+    "typography",
+    "textDensity",
+    "palette",
+    "framing",
+    "motion",
+    "transitionsPerMinute",
+    "audio",
+    "confidence",
+    "disabledTraits",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wordsPerMinuteMin",
+        "wordsPerMinuteMax"
+      ],
+      "properties": {
+        "wordsPerMinuteMin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "wordsPerMinuteMax": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 600
+        }
+      }
+    },
+    "shotDurationUs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "p25",
+        "p50",
+        "p75"
+      ],
+      "properties": {
+        "p25": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "p50": {
+          "$ref": "common.schema.json#/$defs/us"
+        },
+        "p75": {
+          "$ref": "common.schema.json#/$defs/us"
+        }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "scale"
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "sans",
+            "serif",
+            "mono",
+            "display"
+          ]
+        },
+        "scale": {
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ]
+        }
+      }
+    },
+    "textDensity": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relationship",
+        "colors"
+      ],
+      "properties": {
+        "relationship": {
+          "enum": [
+            "monochrome",
+            "analogous",
+            "complementary",
+            "neutral"
+          ]
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/hexColor"
+          },
+          "maxItems": 12
+        }
+      }
+    },
+    "framing": {
+      "enum": [
+        "tight",
+        "medium",
+        "wide"
+      ]
+    },
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "easing",
+        "intensity"
+      ],
+      "properties": {
+        "easing": {
+          "enum": [
+            "linear",
+            "ease",
+            "spring",
+            "snappy"
+          ]
+        },
+        "intensity": {
+          "enum": [
+            "restrained",
+            "normal",
+            "energetic"
+          ]
+        }
+      }
+    },
+    "transitionsPerMinute": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 600
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "energy",
+        "beatAligned"
+      ],
+      "properties": {
+        "energy": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "beatAligned": {
+          "type": "boolean"
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "disabledTraits": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "pace",
+          "shotDuration",
+          "typography",
+          "textDensity",
+          "palette",
+          "framing",
+          "motion",
+          "transitions",
+          "audio"
+        ]
+      },
+      "maxItems": 9,
+      "uniqueItems": true
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sources",
+        "createdAt"
+      ],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "ref",
+              "analyzed"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "local_media",
+                  "url"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "analyzed": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          "maxItems": 20,
+          "minItems": 1
+        },
+        "createdAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      }
+    }
+  }
+}

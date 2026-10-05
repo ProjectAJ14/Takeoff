@@ -1,8 +1,14 @@
 name: Test
 
-# Every pull request, and every push to `main`. Package test jobs are added here
-# as each package lands (CLAUDE.md, "Repository map"); until then the docs-sync
-# guard is the only check.
+# Every pull request, and every push to `main`.
+#   docs-sync  product code must ship with README.md and docs/ changes.
+#   test       typecheck, every Node test (packages/*, workers/media, app unit + Electron smoke)
+#              and the Python worker suite, on Ubuntu and macOS.
+# Network: the only download beyond packages, FFmpeg and Chromium is the explicit
+# `download-model --allow-network` step (faster-whisper tiny, plus base on macOS for the
+# CLI route). Everything after it runs the product offline (HF_HUB_OFFLINE=1).
+# Not run in CI: the Electron UI e2e (packages/app/test/e2e/ui-e2e.ts: screenshots at
+# 1440/1200/900 px and 200% zoom need a real display and review) and scripts/benchmark.ts.
 on:
   pull_request:
   push:
@@ -13,6 +19,9 @@ concurrency:
   group: test-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # A PR that changes product code must also change docs/ and README.md.
   # The script's header lists what counts as product code.
@@ -20,11 +29,84 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
       - run: .github/scripts/check-docs-sync.sh "origin/${{ github.base_ref }}"
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      # macOS also needs `base`: the CLI's default model, used by run-e2e.ts and recovery.test.ts.
+      MODELS: ${{ matrix.os == 'macos-latest' && 'tiny base' || 'tiny' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+
+      - name: FFmpeg (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg xvfb
+      - name: FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      # Ubuntu 24.04 blocks unprivileged user namespaces, which the Chromium sandbox
+      # (renderer overlay, chromiumSandbox: true) and Electron's renderer sandbox need.
+      - name: Allow the Chromium sandbox (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - run: npm ci
+      - name: Playwright Chromium
+        run: npx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
+      - name: Transcribe worker environment
+        working-directory: workers/transcribe
+        run: uv sync --locked
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-${{ runner.os }}-faster-whisper-${{ env.MODELS }}
+      # The one deliberate network step: worker commands other than download-model are offline.
+      - name: Download ASR models (explicit network grant)
+        working-directory: workers/transcribe
+        run: for m in $MODELS; do uv run python -m takeoff_transcribe download-model --model "$m" --allow-network; done
+
+      - run: npm run typecheck
+
+      # Includes packages/app/test (policy unit tests and the Electron smoke test).
+      - name: Node tests (Ubuntu, Electron under Xvfb)
+        if: runner.os == 'Linux'
+        env:
+          HF_HUB_OFFLINE: '1'
+        run: xvfb-run -a npm test
+      - name: Node tests (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HF_HUB_OFFLINE: '1'
+        run: npm test
+
+      - name: Python worker tests
+        working-directory: workers/transcribe
+        env:
+          HF_HUB_OFFLINE: '1'
+        run: uv run python -m unittest discover -s tests -v
+
+      # Needs macOS `say` for synthetic speech.
+      - name: CLI end-to-end route (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HF_HUB_OFFLINE: '1'
+        run: node packages/engine/test/e2e/run-e2e.ts

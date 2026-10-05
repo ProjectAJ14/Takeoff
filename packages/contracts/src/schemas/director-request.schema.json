@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/director-request.schema.json",
+  "title": "DirectorRequest",
+  "description": "Input to a DirectorAdapter: words, candidate evidence, settings and brand summary. Never paths or shell.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "revision",
+    "output",
+    "settings",
+    "words",
+    "candidates",
+    "brand"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "revision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "output": {
+      "$ref": "edit-plan.schema.json#/$defs/output"
+    },
+    "settings": {
+      "$ref": "edit-plan.schema.json#/$defs/settings"
+    },
+    "words": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "assetId",
+          "text",
+          "sourceStartUs",
+          "sourceEndUs",
+          "alignment"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "assetId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "sourceStartUs": {
+            "$ref": "common.schema.json#/$defs/us"
+          },
+          "sourceEndUs": {
+            "$ref": "common.schema.json#/$defs/us"
+          },
+          "alignment": {
+            "enum": [
+              "aligned",
+              "estimated",
+              "failed"
+            ]
+          }
+        }
+      },
+      "maxItems": 100000
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "assetId",
+          "sourceStartUs",
+          "sourceEndUs",
+          "wordIds",
+          "evidence",
+          "confidenceTier"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "filler",
+              "silence",
+              "retake",
+              "false_start"
+            ]
+          },
+          "assetId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "sourceStartUs": {
+            "$ref": "common.schema.json#/$defs/us"
+          },
+          "sourceEndUs": {
+            "$ref": "common.schema.json#/$defs/us"
+          },
+          "wordIds": {
+            "$ref": "common.schema.json#/$defs/idList"
+          },
+          "evidence": {
+            "$ref": "common.schema.json#/$defs/message"
+          },
+          "confidenceTier": {
+            "$ref": "common.schema.json#/$defs/confidenceTier"
+          }
+        }
+      },
+      "maxItems": 10000
+    },
+    "brand": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "hookTone",
+            "motionIntensity",
+            "glossary",
+            "prohibitedClaims"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "hookTone": {
+              "enum": [
+                "plain",
+                "direct",
+                "playful"
+              ]
+            },
+            "motionIntensity": {
+              "enum": [
+                "restrained",
+                "normal",
+                "energetic"
+              ]
+            },
+            "glossary": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "maxItems": 500
+            },
+            "prohibitedClaims": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "maxItems": 200
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

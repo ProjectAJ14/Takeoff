@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/qa-report.schema.json",
+  "title": "QAReport",
+  "description": "Typed QA result against an exact plan and render hash (PRD 11). A skipped check is never reported as passed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "planHash",
+    "artifactHash",
+    "createdAt",
+    "issues",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "planHash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "artifactHash": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "createdAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "severity",
+          "check",
+          "objectRef",
+          "frame",
+          "span",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "severity": {
+            "$ref": "common.schema.json#/$defs/severity"
+          },
+          "check": {
+            "$ref": "common.schema.json#/$defs/code"
+          },
+          "objectRef": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "frame": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/frame"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "span": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/frameSpan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "$ref": "common.schema.json#/$defs/message"
+          },
+          "suggestedPatch": {
+            "$ref": "patch.schema.json"
+          }
+        }
+      },
+      "maxItems": 1000
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "common.schema.json#/$defs/code"
+          },
+          "status": {
+            "$ref": "common.schema.json#/$defs/checkStatus"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/message"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "maxItems": 200
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "id": "job_01",
+  "projectId": "p1",
+  "stage": "Upload",
+  "profile": "draft",
+  "state": "running",
+  "progress": null,
+  "baseRevision": 7,
+  "idempotencyKey": "key_00000001",
+  "attempts": 1,
+  "createdAt": "2026-10-05T12:00:00Z",
+  "updatedAt": "2026-10-05T12:00:00Z",
+  "error": null,
+  "artifacts": []
+}

@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/common.schema.json",
+  "title": "Shared definitions",
+  "$defs": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "idList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "maxItems": 1000,
+      "uniqueItems": true
+    },
+    "us": {
+      "description": "Source time, integer microseconds",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "frame": {
+      "description": "Output time, integer frames",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "sample": {
+      "description": "Output audio time, integer samples at 48 kHz",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "rational": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "num",
+        "den"
+      ],
+      "properties": {
+        "num": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "relPath": {
+      "description": "Portable project-relative path: no absolute root, drive letter, backslash or parent segment",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!(?:.*/)?\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "timestamp": {
+      "description": "UTC ISO-8601 timestamp",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$"
+    },
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]*$"
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[^\\s]+$"
+    },
+    "severity": {
+      "enum": [
+        "critical",
+        "warning",
+        "info"
+      ]
+    },
+    "confidenceTier": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "assetKind": {
+      "enum": [
+        "video",
+        "audio",
+        "image"
+      ]
+    },
+    "networkPolicy": {
+      "enum": [
+        "local_only",
+        "approved_providers"
+      ]
+    },
+    "gainDb": {
+      "type": "number",
+      "minimum": -60,
+      "maximum": 12
+    },
+    "jobStage": {
+      "enum": [
+        "Prepare",
+        "Transcribe",
+        "Clean speech",
+        "Plan visuals/audio",
+        "Build graphics",
+        "Render preview",
+        "Check quality",
+        "Export"
+      ]
+    },
+    "checkStatus": {
+      "enum": [
+        "passed",
+        "failed",
+        "skipped",
+        "not_run"
+      ]
+    },
+    "featureId": {
+      "enum": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17"
+      ]
+    },
+    "providerDataType": {
+      "enum": [
+        "transcript",
+        "frames",
+        "audio",
+        "video",
+        "asset_query",
+        "asset_download",
+        "prompt",
+        "brand_page"
+      ]
+    },
+    "frameSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startFrame",
+        "endFrame"
+      ],
+      "properties": {
+        "startFrame": {
+          "$ref": "#/$defs/frame"
+        },
+        "endFrame": {
+          "$ref": "#/$defs/frame"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "remedy"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/code"
+        },
+        "message": {
+          "$ref": "#/$defs/message"
+        },
+        "remedy": {
+          "$ref": "#/$defs/message"
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "refs"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/code"
+        },
+        "message": {
+          "$ref": "#/$defs/message"
+        },
+        "refs": {
+          "$ref": "#/$defs/idList"
+        }
+      }
+    }
+  }
+}

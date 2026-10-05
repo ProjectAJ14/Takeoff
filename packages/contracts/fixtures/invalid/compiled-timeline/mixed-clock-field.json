@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "1.0",
+  "planHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "compilerVersion": "0.1.0",
+  "fps": {
+    "num": 30,
+    "den": 1
+  },
+  "width": 1080,
+  "height": 1920,
+  "totalFrames": 90,
+  "sampleRate": 48000,
+  "totalSamples": 144000,
+  "segments": [
+    {
+      "segmentId": "speech_01",
+      "assetId": "take_a",
+      "sourceStartUs": 1000000,
+      "sourceEndUs": 4000000,
+      "outputStartFrame": 0,
+      "outputEndFrame": 90,
+      "outputStartSample": 0,
+      "outputEndSample": 144000,
+      "outputStartUs": 0
+    }
+  ],
+  "captions": [
+    {
+      "captionId": "caption_01",
+      "startFrame": 0,
+      "endFrame": 40,
+      "words": [
+        {
+          "wordId": "w01",
+          "startFrame": 0,
+          "endFrame": 12
+        }
+      ]
+    }
+  ],
+  "visuals": [
+    {
+      "visualId": "flow_01",
+      "kind": "motion_template",
+      "startFrame": 0,
+      "endFrame": 90
+    }
+  ],
+  "transforms": [
+    {
+      "transformId": "zoom_01",
+      "kind": "punch",
+      "startFrame": 45,
+      "endFrame": 90
+    }
+  ],
+  "audioEvents": [
+    {
+      "id": "dlg_01",
+      "kind": "dialogue",
+      "assetId": "take_a",
+      "startSample": 0,
+      "endSample": 144000,
+      "gainDb": 0
+    }
+  ],
+  "warnings": [
+    {
+      "code": "orphaned_anchor",
+      "message": "Anchor word removed",
+      "refs": [
+        "flow_02"
+      ]
+    }
+  ]
+}

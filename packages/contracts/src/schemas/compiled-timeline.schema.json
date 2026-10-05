@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/compiled-timeline.schema.json",
+  "title": "CompiledTimeline",
+  "description": "Compiler output: exact frame and sample spans resolved from a validated plan (PRD 9.1, 7.4). Intervals are half-open.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "planHash",
+    "compilerVersion",
+    "fps",
+    "width",
+    "height",
+    "totalFrames",
+    "sampleRate",
+    "totalSamples",
+    "segments",
+    "captions",
+    "visuals",
+    "transforms",
+    "audioEvents",
+    "warnings"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "planHash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "compilerVersion": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "fps": {
+      "$ref": "common.schema.json#/$defs/rational"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 7680
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 7680
+    },
+    "totalFrames": {
+      "$ref": "common.schema.json#/$defs/count"
+    },
+    "sampleRate": {
+      "const": 48000
+    },
+    "totalSamples": {
+      "$ref": "common.schema.json#/$defs/count"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "segmentId",
+          "assetId",
+          "sourceStartUs",
+          "sourceEndUs",
+          "outputStartFrame",
+          "outputEndFrame",
+          "outputStartSample",
+          "outputEndSample"
+        ],
+        "properties": {
+          "segmentId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "assetId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "sourceStartUs": {
+            "$ref": "common.schema.json#/$defs/us"
+          },
+          "sourceEndUs": {
+            "$ref": "common.schema.json#/$defs/us"
+          },
+          "outputStartFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          },
+          "outputEndFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          },
+          "outputStartSample": {
+            "$ref": "common.schema.json#/$defs/sample"
+          },
+          "outputEndSample": {
+            "$ref": "common.schema.json#/$defs/sample"
+          }
+        }
+      },
+      "maxItems": 2000
+    },
+    "captions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "captionId",
+          "startFrame",
+          "endFrame",
+          "words"
+        ],
+        "properties": {
+          "captionId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "startFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          },
+          "endFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "wordId",
+                "startFrame",
+                "endFrame"
+              ],
+              "properties": {
+                "wordId": {
+                  "$ref": "common.schema.json#/$defs/id"
+                },
+                "startFrame": {
+                  "$ref": "common.schema.json#/$defs/frame"
+                },
+                "endFrame": {
+                  "$ref": "common.schema.json#/$defs/frame"
+                }
+              }
+            },
+            "maxItems": 12,
+            "minItems": 1
+          }
+        }
+      },
+      "maxItems": 2000
+    },
+    "visuals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "visualId",
+          "kind",
+          "startFrame",
+          "endFrame"
+        ],
+        "properties": {
+          "visualId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "motion_template",
+              "broll",
+              "hook_text"
+            ]
+          },
+          "startFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          },
+          "endFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          }
+        }
+      },
+      "maxItems": 100
+    },
+    "transforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "transformId",
+          "kind",
+          "startFrame",
+          "endFrame"
+        ],
+        "properties": {
+          "transformId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "punch",
+              "crop"
+            ]
+          },
+          "startFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          },
+          "endFrame": {
+            "$ref": "common.schema.json#/$defs/frame"
+          }
+        }
+      },
+      "maxItems": 500
+    },
+    "audioEvents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "assetId",
+          "startSample",
+          "endSample",
+          "gainDb"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "dialogue",
+              "music",
+              "sfx"
+            ]
+          },
+          "assetId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "startSample": {
+            "$ref": "common.schema.json#/$defs/sample"
+          },
+          "endSample": {
+            "$ref": "common.schema.json#/$defs/sample"
+          },
+          "gainDb": {
+            "$ref": "common.schema.json#/$defs/gainDb"
+          }
+        }
+      },
+      "maxItems": 5000
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/warning"
+      },
+      "maxItems": 1000
+    }
+  }
+}

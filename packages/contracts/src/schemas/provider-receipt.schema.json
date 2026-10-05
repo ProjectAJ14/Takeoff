@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/provider-receipt.schema.json",
+  "title": "ProviderReceipt",
+  "description": "Record of content that left the machine (PRD 14).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectId",
+    "jobId",
+    "provider",
+    "dataType",
+    "purpose",
+    "sentAt",
+    "bytes",
+    "estimatedCostUsd",
+    "retentionPolicyUrl"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "jobId": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provider": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "dataType": {
+      "$ref": "common.schema.json#/$defs/providerDataType"
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "sentAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "bytes": {
+      "$ref": "common.schema.json#/$defs/count"
+    },
+    "estimatedCostUsd": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "retentionPolicyUrl": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/httpsUrl"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

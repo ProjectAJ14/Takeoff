@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "items": [
+    {
+      "source": "path",
+      "path": "/Users/me/Movies/take.mov"
+    },
+    {
+      "source": "upload",
+      "uploadId": "up_01"
+    }
+  ]
+}

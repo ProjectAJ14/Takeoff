@@ -1,0 +1,8 @@
+{
+  "chromium": "153.0.8010.12",
+  "platform": "darwin-arm64",
+  "frames": {
+    "20": "3f25f635c20f45bc9b68827e7c8cede64fa5cbddcf3d89068ed3b34cd80cd4d1",
+    "70": "88db0a9ab58c6bf23a63f5c7d16025bc275ae89dca9acd8f6222c8fa5170d2da"
+  }
+}

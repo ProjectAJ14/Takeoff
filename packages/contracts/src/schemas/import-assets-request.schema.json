@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/import-assets-request.schema.json",
+  "title": "ImportAssetsRequest",
+  "description": "POST /v1/projects/{id}/assets body. Paths are picker-authorised and resolved under approved roots by the engine.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "source"
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source",
+              "path"
+            ],
+            "properties": {
+              "source": {
+                "const": "path"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source",
+              "uploadId"
+            ],
+            "properties": {
+              "source": {
+                "const": "upload"
+              },
+              "uploadId": {
+                "$ref": "common.schema.json#/$defs/id"
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 100,
+      "minItems": 1
+    }
+  }
+}

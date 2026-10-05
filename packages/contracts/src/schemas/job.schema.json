@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/job.schema.json",
+  "title": "Job",
+  "description": "Pipeline job state (PRD 13). progress is null when the stage cannot be measured.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectId",
+    "stage",
+    "profile",
+    "state",
+    "progress",
+    "baseRevision",
+    "idempotencyKey",
+    "attempts",
+    "createdAt",
+    "updatedAt",
+    "error",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "stage": {
+      "$ref": "common.schema.json#/$defs/jobStage"
+    },
+    "profile": {
+      "enum": [
+        "draft",
+        "final"
+      ]
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "running",
+        "waiting_for_user",
+        "succeeded",
+        "failed",
+        "canceled"
+      ]
+    },
+    "progress": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "baseRevision": {
+      "$ref": "common.schema.json#/$defs/revision"
+    },
+    "idempotencyKey": {
+      "$ref": "create-job-request.schema.json#/$defs/idempotencyKey"
+    },
+    "attempts": {
+      "$ref": "common.schema.json#/$defs/count"
+    },
+    "createdAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "updatedAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "ref",
+          "hash"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "ref": {
+            "$ref": "common.schema.json#/$defs/relPath"
+          },
+          "hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      },
+      "maxItems": 100
+    }
+  }
+}

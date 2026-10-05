@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/brand-profile.schema.json",
+  "title": "BrandProfile",
+  "description": "Manual brand profile (F17). Versioned; a version is frozen into each render snapshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "name",
+    "palette",
+    "fonts",
+    "logos",
+    "captionStyle",
+    "hookTone",
+    "glossary",
+    "prohibitedClaims",
+    "motionIntensity",
+    "safeLayouts",
+    "music",
+    "sfx",
+    "ctaTemplates",
+    "aspectPresets",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "palette": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "color"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "primary",
+              "secondary",
+              "accent",
+              "background",
+              "text",
+              "highlight"
+            ]
+          },
+          "color": {
+            "$ref": "common.schema.json#/$defs/hexColor"
+          }
+        }
+      },
+      "maxItems": 16,
+      "minItems": 1
+    },
+    "fonts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "family",
+          "assetId",
+          "license"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "heading",
+              "body",
+              "caption"
+            ]
+          },
+          "family": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "assetId": {
+            "anyOf": [
+              {
+                "$ref": "common.schema.json#/$defs/id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "maxItems": 6
+    },
+    "logos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assetId",
+          "role"
+        ],
+        "properties": {
+          "assetId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "mark",
+              "wordmark"
+            ]
+          }
+        }
+      },
+      "maxItems": 6
+    },
+    "captionStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template",
+        "highlightColor",
+        "positionPolicy"
+      ],
+      "properties": {
+        "template": {
+          "$ref": "edit-plan.schema.json#/$defs/captionTemplate"
+        },
+        "highlightColor": {
+          "$ref": "common.schema.json#/$defs/hexColor"
+        },
+        "positionPolicy": {
+          "$ref": "edit-plan.schema.json#/$defs/captionPosition"
+        }
+      }
+    },
+    "hookTone": {
+      "enum": [
+        "plain",
+        "direct",
+        "playful"
+      ]
+    },
+    "glossary": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "maxItems": 500
+    },
+    "prohibitedClaims": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "maxItems": 200
+    },
+    "motionIntensity": {
+      "enum": [
+        "restrained",
+        "normal",
+        "energetic"
+      ]
+    },
+    "safeLayouts": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "full",
+          "inset",
+          "split"
+        ]
+      },
+      "maxItems": 3
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "moods",
+        "bannedCategories"
+      ],
+      "properties": {
+        "moods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "maxItems": 20
+        },
+        "bannedCategories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "maxItems": 20
+        }
+      }
+    },
+    "sfx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bannedCategories"
+      ],
+      "properties": {
+        "bannedCategories": {
+          "type": "array",
+          "items": {
+            "$ref": "edit-plan.schema.json#/$defs/sfxCategory"
+          },
+          "maxItems": 3
+        }
+      }
+    },
+    "ctaTemplates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "maxItems": 10
+    },
+    "aspectPresets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "width",
+          "height"
+        ],
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 7680
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 7680
+          }
+        }
+      },
+      "maxItems": 8
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "sourceUrl",
+        "createdAt"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "manual",
+            "website"
+          ]
+        },
+        "sourceUrl": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/httpsUrl"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      }
+    }
+  }
+}

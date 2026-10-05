@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0",
+  "id": "developer",
+  "version": 1,
+  "name": "Developer",
+  "palette": [
+    {
+      "role": "primary",
+      "color": "blue"
+    },
+    {
+      "role": "text",
+      "color": "#FFFFFF"
+    }
+  ],
+  "fonts": [
+    {
+      "role": "caption",
+      "family": "Inter",
+      "assetId": null,
+      "license": "OFL-1.1"
+    }
+  ],
+  "logos": [
+    {
+      "assetId": "logo_a",
+      "role": "mark"
+    }
+  ],
+  "captionStyle": {
+    "template": "restrained",
+    "highlightColor": "#FFD60A",
+    "positionPolicy": "safe_bottom"
+  },
+  "hookTone": "direct",
+  "glossary": [
+    "Flutter",
+    "Dio"
+  ],
+  "prohibitedClaims": [
+    "fastest"
+  ],
+  "motionIntensity": "restrained",
+  "safeLayouts": [
+    "full",
+    "inset"
+  ],
+  "music": {
+    "moods": [
+      "calm"
+    ],
+    "bannedCategories": []
+  },
+  "sfx": {
+    "bannedCategories": [
+      "hit"
+    ]
+  },
+  "ctaTemplates": [
+    "Follow for more"
+  ],
+  "aspectPresets": [
+    {
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "provenance": {
+    "source": "manual",
+    "sourceUrl": null,
+    "createdAt": "2026-10-05T12:00:00Z"
+  }
+}

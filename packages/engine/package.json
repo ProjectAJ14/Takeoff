@@ -1,0 +1,27 @@
+{
+  "name": "@takeoff/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "takeoff": "./bin/takeoff.js"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@takeoff/compiler": "0.0.0",
+    "@takeoff/contracts": "0.0.0",
+    "@takeoff/director": "0.0.0",
+    "@takeoff/media": "0.0.0",
+    "@takeoff/project-store": "0.0.0",
+    "@takeoff/renderer-api": "0.0.0",
+    "ajv": "^8.20.0"
+  },
+  "optionalDependencies": {
+    "@takeoff/renderer-browser": "0.0.0"
+  }
+}

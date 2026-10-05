@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.takeoff.local/director-response.schema.json",
+  "title": "DirectorResponse",
+  "description": "Proposed EditPlan pieces from a director; validated before use. At most three truthful hook options (F13).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "decisions",
+    "segments",
+    "captions",
+    "visuals",
+    "transforms",
+    "reviewMarkers",
+    "provenance",
+    "hookOptions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "decisions": {
+      "$ref": "edit-plan.schema.json#/properties/decisions"
+    },
+    "segments": {
+      "$ref": "edit-plan.schema.json#/properties/segments"
+    },
+    "captions": {
+      "$ref": "edit-plan.schema.json#/properties/captions"
+    },
+    "visuals": {
+      "$ref": "edit-plan.schema.json#/properties/visuals"
+    },
+    "transforms": {
+      "$ref": "edit-plan.schema.json#/properties/transforms"
+    },
+    "reviewMarkers": {
+      "$ref": "edit-plan.schema.json#/properties/reviewMarkers"
+    },
+    "provenance": {
+      "$ref": "edit-plan.schema.json#/properties/provenance"
+    },
+    "hookOptions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "evidenceIds"
+        ],
+        "properties": {
+          "text": {
+            "$ref": "edit-plan.schema.json#/$defs/hookText"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        }
+      }
+    }
+  }
+}
