@@ -50,7 +50,7 @@ const report: Record<string, unknown> = {};
 
 try {
   step(`synthesising media in ${dir}`);
-  const say = (f: string, text: string) => run('say', ['-o', join(dir, f), text]);
+  const say = (f: string, text: string) => run('say', ['-v', 'Samantha', '-o', join(dir, f), text]);
   await say('t1.aiff', 'The secret to fast builds is, um, the secret is, uh. Hmm. Let me start again.');
   // Take 2: [text, silence after (s)]. Real silences between sentences give the silence rule seams to cut; the
   // middle sentences push the cleaned edit past the 30 s hard max so whole sentences must be dropped.

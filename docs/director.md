@@ -142,6 +142,14 @@ earlier take is never removed for a later partial one.
 deterministic: the same request and context always produce the same plan.
 `repair` simply rebuilds the plan.
 
+**Sentences.** Hooks, motion templates and target-length trimming work on whole
+sentences. A sentence ends at `.`, `!` or `?`, at a change of take, or before a
+capitalised word (other than "I") that follows a pause of at least 1 s
+(`SENTENCE_GAP_US`). The pause is measured from word gaps and from the VAD
+intervals in `ctx.speech`, because ASR can drop the full stop and stretch the
+next word over the silence. A pause before a lowercase word ("the answer is …
+nothing.") stays inside its sentence.
+
 - **Candidates.** The plan uses the request's own `candidates` when there are
   any; otherwise it runs the detectors. Each candidate is kept only if its
   toggle is on: `fillers`, `silence`, or `badTakes` (for retakes and false

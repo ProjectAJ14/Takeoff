@@ -142,12 +142,16 @@ and the Playwright Chromium headless shell.
 4. **Compose.** One FFmpeg process reads the sources and the overlay PNG stream
    on stdin (`image2pipe`) and writes `<outPath>.partial.mp4`.
 5. **Validate.** `ffprobe -count_frames` must report the render size, exactly
-   `totalFrames` video frames, and an audio stream with time base `1/48000` and
-   exactly `totalSamples` samples. Otherwise the render fails as
-   `validation_failed`.
+   `totalFrames` video frames, and an audio stream with time base `1/48000`
+   whose stored length is within `AAC_LENGTH_SLACK` (16) samples of
+   `totalSamples`. The mix itself is exact; FFmpeg 6.1's AAC encoder rounds the
+   stored length to a multiple of 16 samples, while 9.0 stores it exactly.
+   Otherwise the render fails as `validation_failed`.
 6. **Rename** the partial to `outPath` and hash it.
 
-`RenderError.code` is `invalid_input`, `ffmpeg_failed` or `validation_failed`.
+`RenderError.code` is `invalid_input`, `ffmpeg_failed` or `validation_failed`;
+each error also carries a `remedy`, so the engine reports the typed code rather
+than `internal`.
 Messages carry codes and numbers, never paths, transcript text or FFmpeg stderr.
 
 **Cancel.** Aborting `signal` closes Chromium, kills FFmpeg with SIGKILL and

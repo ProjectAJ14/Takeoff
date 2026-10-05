@@ -56,7 +56,7 @@ test('crash recovery: SIGKILL during Transcribe and Render preview, rerun comple
   const proj = join(dir, 'proj');
   const db = join(proj, 'project.db');
   try {
-    await run('say', ['-o', join(dir, 's.aiff'), 'So today I want to show you how Flutter sends a request through Dio to the server. Um, it is really simple. The client builds the request, the server answers, and the widget rebuilds with the data. That is the whole flow, and thanks for watching.']);
+    await run('say', ['-v', 'Samantha', '-o', join(dir, 's.aiff'), 'So today I want to show you how Flutter sends a request through Dio to the server. Um, it is really simple. The client builds the request, the server answers, and the widget rebuilds with the data. That is the whole flow, and thanks for watching.']);
     await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1080x1920:rate=30', '-i', join(dir, 's.aiff'), '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', join(dir, 'take.mp4')]);
     const take = join(dir, 'take.mp4');
     const before = sha(take);

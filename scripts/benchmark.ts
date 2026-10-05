@@ -89,7 +89,7 @@ const ok = (r: PipelineResult) => {
 
 // ---- corpus ----
 say(`synthesising a 5-minute 1080p take in ${dir}`);
-await run('say', ['-o', join(dir, 'p.aiff'), [
+await run('say', ['-v', 'Samantha', '-o', join(dir, 'p.aiff'), [
   'So today I want to explain how Flutter talks to a server.', 'Um, the main thing is that Flutter sends a request through Dio.',
   'The server answers with JSON, and the widget rebuilds with the new data.', "Now let's compare REST versus GraphQL.",
   'REST uses many endpoints, uh, while GraphQL uses one endpoint and you ask for exactly the fields you need.',

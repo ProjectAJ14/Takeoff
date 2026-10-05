@@ -46,7 +46,7 @@ export function buildUserPrompt(req: DirectorRequest, ctx: DirectorContext, base
   const data = {
     candidates: candidatesFor(req, ctx).map((c) => ({ id: c.id, kind: c.kind, tier: c.confidenceTier, wordIds: c.wordIds, evidence: c.evidence })),
     words: req.words.map((w) => ({ id: w.id, text: w.text })),
-    hookOptions: hookOptionsFor(req, base).map((o, index) => ({ index, text: o.text })),
+    hookOptions: hookOptionsFor(req, base, ctx.speech).map((o, index) => ({ index, text: o.text })),
   };
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
   return `<untrusted_data>\n${json}\n</untrusted_data>\nReply with the JSON object only.`;
@@ -67,7 +67,7 @@ export function parseChoices(raw: string, req: DirectorRequest, ctx: DirectorCon
   const candidates = new Set(candidatesFor(req, ctx).map((c) => c.id));
   const words = new Set(req.words.map((w) => w.id));
   const ids = (x: unknown, known: Set<string>) => (Array.isArray(x) ? [...new Set(x.filter((i): i is string => typeof i === 'string' && known.has(i)))] : []);
-  const hookOptions = hookOptionsFor(req, base);
+  const hookOptions = hookOptionsFor(req, base, ctx.speech);
   const choices: DirectorChoices = {
     acceptCandidateIds: ids(v.acceptCandidateIds, candidates),
     rejectCandidateIds: ids(v.rejectCandidateIds, candidates),

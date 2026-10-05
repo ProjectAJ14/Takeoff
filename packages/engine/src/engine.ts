@@ -1123,7 +1123,7 @@ export class Engine {
     const snap = this.store.commitPlan(plan, req.revision, 'system');
     // F13: up to three verbatim hook options over what the plan keeps, for the review screen to choose from.
     // hookOptionsFor already drops options with a prohibited phrase (req.brand carries the claims).
-    const options: HookOption[] = req.words.length && plan.settings.textHook ? hookOptionsFor(req, plan) : [];
+    const options: HookOption[] = req.words.length && plan.settings.textHook ? hookOptionsFor(req, plan, st.dctx?.speech) : [];
     this.store.setSetting('hookOptions', { revision: snap.revision, options });
     this.logger.log('plan', { projectId: this.projectId, jobId: st.jobId, revision: snap.revision, fallbackCount, counts: { warnings: report.warnings.length } });
     return { revision: snap.revision };

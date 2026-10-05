@@ -39,12 +39,20 @@ export interface BrowserRenderArtifact extends RenderArtifact {
   faces: Array<{ frame: number; rect: Rect }>;
 }
 
+const REMEDY: Record<RenderError['code'], string> = {
+  invalid_input: 'Re-run the edit so the plan and timeline are rebuilt, then render again.',
+  ffmpeg_failed: 'Check that ffmpeg is installed with libx264 and AAC, then render again.',
+  validation_failed: 'Render again; if it repeats, create a diagnostic bundle with your FFmpeg version.',
+};
+
 export class RenderError extends Error {
   code: 'invalid_input' | 'ffmpeg_failed' | 'validation_failed';
+  remedy: string;
   constructor(code: RenderError['code'], message: string) {
     super(message);
     this.name = 'RenderError';
     this.code = code;
+    this.remedy = REMEDY[code];
   }
 }
 
@@ -147,6 +155,9 @@ async function sha256(path: string): Promise<string> {
 }
 
 /** Decodable MP4 with exactly the compiled frame and sample counts (PRD §5.5 "validate before declaring success"). */
+/** Most samples an AAC track's stored length may differ from the exact mix (0.33 ms at 48 kHz). */
+export const AAC_LENGTH_SLACK = 16;
+
 async function validateOutput(path: string, c: ComposeContext, signal?: AbortSignal): Promise<void> {
   const p = ff(FFPROBE, ['-v', 'error', '-count_frames', '-show_entries', 'stream=codec_type,width,height,nb_read_frames,duration_ts,time_base', '-of', 'json', ffFile(path)], signal);
   p.child.stdin.end();
@@ -157,7 +168,8 @@ async function validateOutput(path: string, c: ComposeContext, signal?: AbortSig
   const problems: string[] = [];
   if (!v || v.width !== c.width || v.height !== c.height) problems.push('video size');
   if (Number(v?.nb_read_frames) !== c.compiled.totalFrames) problems.push(`video frames ${v?.nb_read_frames} != ${c.compiled.totalFrames}`);
-  if (!a || a.time_base !== '1/48000' || a.duration_ts !== c.compiled.totalSamples) problems.push(`audio samples ${a?.duration_ts} != ${c.compiled.totalSamples}`);
+  // The mix is exact; FFmpeg 6.1's AAC encoding rounds the stored length to a 16-sample multiple (9.0 stores it exactly).
+  if (!a || a.time_base !== '1/48000' || Math.abs((a.duration_ts ?? -1e9) - c.compiled.totalSamples) > AAC_LENGTH_SLACK) problems.push(`audio samples ${a?.duration_ts} != ${c.compiled.totalSamples}`);
   if (problems.length) throw new RenderError('validation_failed', `output failed validation: ${problems.join(', ')}`);
 }
 

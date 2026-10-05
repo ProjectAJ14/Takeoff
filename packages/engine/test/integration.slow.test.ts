@@ -22,7 +22,7 @@ test('slow: real worker transcribes once, caches, and the pipeline succeeds', { 
   const { dir, cleanup } = await tmp();
   const media = join(dir, 'media');
   await mkdir(media);
-  await run('say', ['-o', join(media, 'speech.aiff'), 'So today I want to show you how Flutter sends a request through Dio. It is really simple.']);
+  await run('say', ['-v', 'Samantha', '-o', join(media, 'speech.aiff'), 'So today I want to show you how Flutter sends a request through Dio. It is really simple.']);
   await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=30', '-i', join(media, 'speech.aiff'), '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', join(media, 'take.mp4')]);
   const renderer = fakeRenderer();
   let calls = 0;

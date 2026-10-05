@@ -26,8 +26,8 @@ get a longer draft with the conflict stated, and final export refuses it.
 ## Install
 
 You need macOS (the only platform tested so far), Node.js 24+, `ffmpeg`/`ffprobe`
-with libx264, and [uv](https://docs.astral.sh/uv/). Details are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+with libx264 (the test suite passes on FFmpeg 6.1 and 9.0), and
+[uv](https://docs.astral.sh/uv/). Details are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```sh
 npm install

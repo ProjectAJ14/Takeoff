@@ -125,6 +125,28 @@ test('motion templates: deterministic triggers, transcript-only labels, none wit
   assert.ok(list && list.kind === 'motion_template' && list.template === 'comparison_list_v1');
   assert.deepEqual(list.params, { title: 'There are two steps', items: ['install Flutter', 'add Dio'] });
 
+  // ASR dropped the full stop at a long pause: the capitalised word after it still starts a new sentence (one template each).
+  const merged = buildPlan(request(words('Flutter sends a request through Dio to the server [2000] Now compare REST versus GraphQL, it is simple.'), { textHook: false }));
+  assert.deepEqual(merged.visuals.map((x) => x.kind === 'motion_template' && x.template), ['request_flow_v1', 'comparison_list_v1']);
+  // ASR stretched the next word over the pause (no word gap); VAD still shows the silence.
+  const stretched = words('Flutter sends a request through Dio to the server. Now compare REST versus GraphQL, it is simple.')
+    .map((w) => ({ ...w, text: w.text === 'server.' ? 'server' : w.text }));
+  const nowIdx = stretched.findIndex((w) => w.text === 'Now');
+  stretched[nowIdx] = { ...stretched[nowIdx]!, sourceStartUs: stretched[nowIdx - 1]!.sourceEndUs };
+  const shifted = stretched.map((w, i) => (i > nowIdx ? { ...w, sourceStartUs: w.sourceStartUs + 2_000_000, sourceEndUs: w.sourceEndUs + 2_000_000 } : w));
+  shifted[nowIdx] = { ...shifted[nowIdx]!, sourceEndUs: shifted[nowIdx]!.sourceEndUs + 2_000_000 };
+  const a = shifted[0]!.assetId;
+  const speech = [
+    { assetId: a, sourceStartUs: 0, sourceEndUs: shifted[nowIdx - 1]!.sourceEndUs },
+    { assetId: a, sourceStartUs: shifted[nowIdx]!.sourceEndUs - 400_000, sourceEndUs: shifted.at(-1)!.sourceEndUs },
+  ];
+  const vadSplit = (sp: typeof speech) => buildPlan(request(shifted, { textHook: false }), { speech: sp }).visuals.map((x) => x.kind === 'motion_template' && x.template);
+  assert.deepEqual(vadSplit(speech), ['request_flow_v1', 'comparison_list_v1']);
+  assert.deepEqual(vadSplit([{ assetId: a, sourceStartUs: 0, sourceEndUs: shifted.at(-1)!.sourceEndUs }]), ['request_flow_v1'], 'no VAD pause: one sentence');
+  // A beat before a lowercase payoff stays inside its sentence.
+  const beat = buildPlan(request(words('And the answer is [1500] nothing. Dio vs http is next.'), { textHook: false }));
+  assert.deepEqual(beat.visuals.map((x) => x.kind === 'motion_template' && x.template), ['comparison_list_v1']);
+
   assert.deepEqual(buildPlan(request(words('We talk about state today. It is simple.'), { textHook: false })).visuals, []);
   assert.deepEqual(buildPlan(request(flowWs, { textHook: false, motionGraphics: false })).visuals, []);
 });

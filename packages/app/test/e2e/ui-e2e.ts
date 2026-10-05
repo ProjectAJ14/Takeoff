@@ -41,8 +41,8 @@ let app: ElectronApplication | undefined;
 try {
   // ---- synthetic talking head: fillers, a false start, a 2 s pause ----
   step(`synthesising media in ${dir}`);
-  await run('say', ['-o', join(dir, 'a.aiff'), 'Um, so today I want to explain how Flutter talks to a server. Uh, so the main thing is. So the main thing is that Flutter sends a request through Dio to the server.']);
-  await run('say', ['-o', join(dir, 'b.aiff'), "Now let's compare REST versus GraphQL. REST uses many endpoints, uh, while GraphQL uses one endpoint. Thanks for watching."]);
+  await run('say', ['-v', 'Samantha', '-o', join(dir, 'a.aiff'), 'Um, so today I want to explain how Flutter talks to a server. Uh, so the main thing is. So the main thing is that Flutter sends a request through Dio to the server.']);
+  await run('say', ['-v', 'Samantha', '-o', join(dir, 'b.aiff'), "Now let's compare REST versus GraphQL. REST uses many endpoints, uh, while GraphQL uses one endpoint. Thanks for watching."]);
   await ff(['-i', 'a.aiff', '-f', 'lavfi', '-t', '2', '-i', 'anullsrc=r=48000:cl=mono', '-i', 'b.aiff', '-filter_complex',
     '[0:a]aresample=48000[a0];[2:a]aresample=48000[a2];[a0][1:a][a2]concat=n=3:v=0:a=1[o]', '-map', '[o]', '-ac', '1', 'speech.wav']);
   await ff(['-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30', '-i', 'speech.wav', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', 'take1.mov']);

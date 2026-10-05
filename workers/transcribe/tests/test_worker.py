@@ -37,7 +37,7 @@ class TranscribeTest(unittest.TestCase):
         aiff = os.path.join(cls.tmp, "t.aiff")
         cls.speech = os.path.join(cls.tmp, "speech.wav")
         cls.silence = os.path.join(cls.tmp, "silence.wav")
-        subprocess.run(["say", "-o", aiff, "Flutter sends a request through Dio to the server"], check=True)
+        subprocess.run(["say", "-v", "Samantha", "-o", aiff, "Flutter sends a request through Dio to the server"], check=True)
         ff = ["ffmpeg", "-loglevel", "error", "-y"]
         subprocess.run([*ff, "-i", aiff, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", cls.speech], check=True)
         subprocess.run([*ff, "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", "-t", "4",

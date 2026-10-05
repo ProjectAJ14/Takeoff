@@ -64,8 +64,10 @@ test('a VFR source gets a CFR proxy', async () => {
   assert.equal(r.derived.analysisWav, null);
   const px = await probe(join(root, r.derived.proxy!.path));
   assert.equal(px.video!.vfr, false);
-  // Frames 0-29 last 1/30 s, frames 30-89 last 2/30 s: content ends at 5.0 s. The CFR proxy keeps that timing.
-  assert.ok(Math.abs(px.durationUs! - 5_000_000) <= 34_000, String(px.durationUs));
+  // Frames 0-29 last 1/30 s, frames 30-89 last 2/30 s: content ends at 5.0 s. The CFR proxy keeps that timing to
+  // within one proxy frame: FFmpeg 6.1's fps filter drops the final frame (89 frames), 9.0 keeps it (90).
+  const frameUs = 1_000_000 / r.proxyFps!;
+  assert.ok(Math.abs(px.durationUs! - 5_000_000) <= frameUs + 1_000, String(px.durationUs));
 });
 
 test('rerun reuses verified finals and deletes stale partials; a tampered final is rebuilt', async () => {

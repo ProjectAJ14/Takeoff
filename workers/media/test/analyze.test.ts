@@ -45,7 +45,8 @@ test('analyzeColor reads a 10-bit source on the same 8-bit scale', async () => {
   gen('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=1', '-c:v', 'ffv1', '-pix_fmt', 'yuv420p10le', ten);
   const [a, b] = [await analyzeColor(eight, { samples: 2 }), await analyzeColor(ten, { samples: 2 })];
   for (const k of ['yavg', 'uavg', 'vavg', 'ymax'] as const) assert.ok(Math.abs(a.stats[k] - b.stats[k]) < 2, `${k} ${a.stats[k]} vs ${b.stats[k]}`);
-  assert.equal(b.correction.brightness, a.correction.brightness);
+  // Within one rounding step: 10-bit stats land a hair from 8-bit (FFmpeg 6.1 rounds brightness -0.0185 vs -0.0186).
+  assert.ok(Math.abs(b.correction.brightness - a.correction.brightness) <= 0.0002, `${b.correction.brightness} vs ${a.correction.brightness}`);
   for (const k of ['rm', 'gm', 'bm'] as const) assert.ok(Math.abs(a.correction.colorbalance[k] - b.correction.colorbalance[k]) < 0.002);
 });
 

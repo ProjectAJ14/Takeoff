@@ -147,11 +147,28 @@ export function brollTags(fileName: string, userTags: string[] = []): string[] {
 }
 
 /** Sentences by terminal punctuation, never spanning assets. */
-function splitSentences(ws: Word[]): Word[][] {
+/**
+ * ASR can drop the full stop at a long pause ('…to the server Now let's…') and stretch the next word over the
+ * silence, so the pause is measured from word gaps and from VAD. A capitalised word after one starts a sentence.
+ */
+const SENTENCE_GAP_US = 1_000_000;
+function pausedBefore(prev: Word, w: Word, speech: SpeechInterval[]): boolean {
+  if (w.sourceStartUs - prev.sourceEndUs >= SENTENCE_GAP_US) return true;
+  let t = prev.sourceEndUs;
+  for (const v of speech.filter((x) => x.assetId === w.assetId && x.sourceEndUs > t && x.sourceStartUs < w.sourceEndUs).sort((a, b) => a.sourceStartUs - b.sourceStartUs)) {
+    if (v.sourceStartUs - t >= SENTENCE_GAP_US) return true;
+    t = Math.max(t, v.sourceEndUs);
+  }
+  return false;
+}
+const startsAfterPause = (prev: Word, w: Word, speech: SpeechInterval[]) =>
+  /^[A-Z]/.test(w.text) && !/^I\b/.test(w.text) && pausedBefore(prev, w, speech);
+
+function splitSentences(ws: Word[], speech: SpeechInterval[] = []): Word[][] {
   const out: Word[][] = [];
   let cur: Word[] = [];
   for (const w of ws) {
-    if (cur.length && cur[0]!.assetId !== w.assetId) cur = [];
+    if (cur.length && (cur[0]!.assetId !== w.assetId || startsAfterPause(cur[cur.length - 1]!, w, speech))) cur = [];
     if (cur.length === 0) out.push(cur);
     cur.push(w);
     if (isTerminal(w)) cur = [];
@@ -326,9 +343,9 @@ function hookOptions(sentences: Word[][], glossary: Set<string>, prohibited: str
 }
 
 /** Hook options over the words a plan retains (F13: at most three, each traced to word ids). */
-export function hookOptionsFor(req: DirectorRequest, plan: EditPlan): HookOption[] {
+export function hookOptionsFor(req: DirectorRequest, plan: EditPlan, speech: SpeechInterval[] = []): HookOption[] {
   const kept = new Set(plan.segments.flatMap((s) => s.wordIds));
-  const sentences = splitSentences(orderWords(req.words))
+  const sentences = splitSentences(orderWords(req.words), speech)
     .map((s) => s.filter((w) => kept.has(w.id)))
     .filter((s) => s.length);
   return hookOptions(sentences, new Set((req.brand?.glossary ?? []).map(norm)), req.brand?.prohibitedClaims ?? []);
@@ -468,7 +485,7 @@ export function buildPlan(
 
   // F14 target length: drop whole low-priority middle sentences after cleanup; never the first or last.
   // A ≤2-word sentence ("Nothing.") is the payoff of the one before it: they are dropped together, never split.
-  const sentences = splitSentences(ws).reduce<Word[][]>((acc, s) => {
+  const sentences = splitSentences(ws, ctx.speech).reduce<Word[][]>((acc, s) => {
     const prev = acc.at(-1);
     if (prev && s.length <= 2 && prev[0]!.assetId === s[0]!.assetId) prev.push(...s);
     else acc.push([...s]);

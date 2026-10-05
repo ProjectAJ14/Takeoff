@@ -46,9 +46,9 @@ const TOGGLES = {
 try {
   // ---- synthetic talking head: fillers, a false start, a 2 s pause, a comparison ----
   step(`synthesising media in ${dir}`);
-  await run('say', ['-o', join(dir, 'a.aiff'), 'Um, so today I want to explain how Flutter talks to a server. Uh, so the main thing is. So the main thing is that Flutter sends a request through Dio to the server.']);
-  await run('say', ['-o', join(dir, 'b.aiff'), "Now let's compare REST versus GraphQL. REST uses many endpoints, uh, while GraphQL uses one endpoint and you ask for exactly the fields you need. That is the whole idea."]);
-  await run('say', ['-o', join(dir, 'c.aiff'), 'And that is how the request flow works. Thanks for watching.']);
+  await run('say', ['-v', 'Samantha', '-o', join(dir, 'a.aiff'), 'Um, so today I want to explain how Flutter talks to a server. Uh, so the main thing is. So the main thing is that Flutter sends a request through Dio to the server.']);
+  await run('say', ['-v', 'Samantha', '-o', join(dir, 'b.aiff'), "Now let's compare REST versus GraphQL. REST uses many endpoints, uh, while GraphQL uses one endpoint and you ask for exactly the fields you need. That is the whole idea."]);
+  await run('say', ['-v', 'Samantha', '-o', join(dir, 'c.aiff'), 'And that is how the request flow works. Thanks for watching.']);
   await ff(['-i', 'a.aiff', '-f', 'lavfi', '-t', '2', '-i', 'anullsrc=r=48000:cl=mono', '-i', 'b.aiff', '-filter_complex',
     '[0:a]aresample=48000[a0];[2:a]aresample=48000[a2];[a0][1:a][a2]concat=n=3:v=0:a=1[o]', '-map', '[o]', '-ac', '1', 'speech.wav']);
   // Landscape MOV (video runs ~2 s past the speech: trailing dead air) and a phone-style portrait MP4 (rotation metadata).
@@ -135,7 +135,8 @@ try {
     .map((t: any) => t.words.map((w: any) => w.text).join(' ')).join(' ');
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z' ]+/g, ' ').replace(/\s+/g, ' ');
   const count = (s: string, needle: string) => norm(s).split(needle).length - 1;
-  assert.ok(/\bum\b/.test(norm(said)), 'transcript heard the filler');
+  // Whisper may drop the opening 'Um' under a glossary prompt; any heard filler makes the removal check meaningful.
+  assert.ok(/\b(um|uh)\b/.test(norm(said)), `transcript heard no filler: ${said}`);
   assert.ok(!/\b(um|uh)\b/.test(norm(capText)), `fillers in captions: ${capText}`);
   assert.equal(count(said, 'so the main thing is'), 2, 'transcript has the false start');
   assert.equal(count(capText, 'so the main thing is'), 1, 'false start removed');
